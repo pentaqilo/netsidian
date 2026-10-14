@@ -1,0 +1,38 @@
+# Dependencies and generated output
+node_modules/
+frontend/dist/*
+!frontend/dist/.gitkeep
+bin/
+/dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+*.log
+NPM_DONE
+
+# Local application state and credentials
+netsidian-state/
+*.state/
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Editor and temporary files
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+*.tmp
+*.swp
+.DS_Store
+
+# Release packaging workspace
+chart-stage/
+release-stage/
+release-assets/

@@ -1,0 +1,64 @@
+# Netsidian local deployment (single host, SQLite + managed local storage).
+# The image binds 0.0.0.0 + auth=local by default: the first browser visit
+# runs setup (one operator account); everything else requires login.
+#
+#   docker compose -f deploy/compose.yaml up -d --build
+#   open http://127.0.0.1:3000   (run setup on first visit)
+#
+# State (database, content, journal, history, secrets) lives entirely in
+# the netsidian-state volume. Back it up as one unit.
+#
+# NOTE: this stack is published on 127.0.0.1:3001 so the standalone
+# `netsidian` container can keep 3000 (see README "Docker"). The
+# /large-vault mount backs the local folder-picker test fixture.
+name: netsidian-local
+
+services:
+  netsidian:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: netsidian:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      # Identical server configuration contract to Docker and Helm.
+      NETSIDIAN_BIND: "0.0.0.0"
+      NETSIDIAN_AUTH_MODE: ${NETSIDIAN_AUTH_MODE:-local}
+      NETSIDIAN_SIGNUP_ENABLED: ${NETSIDIAN_SIGNUP_ENABLED:-false}
+      NETSIDIAN_LOG_LEVEL: ${NETSIDIAN_LOG_LEVEL:-info}
+      NETSIDIAN_TRUSTED_PROXY: ${NETSIDIAN_TRUSTED_PROXY:-false}
+      NETSIDIAN_PUBLIC_URL: ${NETSIDIAN_PUBLIC_URL:-}
+      NETSIDIAN_OIDC_ISSUER: ${NETSIDIAN_OIDC_ISSUER:-}
+      NETSIDIAN_OIDC_CLIENT_ID: ${NETSIDIAN_OIDC_CLIENT_ID:-}
+      NETSIDIAN_OIDC_CLIENT_SECRET: ${NETSIDIAN_OIDC_CLIENT_SECRET:-}
+      NETSIDIAN_OIDC_LABEL: ${NETSIDIAN_OIDC_LABEL:-Single sign-on}
+      NETSIDIAN_OIDC_SCOPES: ${NETSIDIAN_OIDC_SCOPES:-openid profile email groups}
+      NETSIDIAN_OIDC_ALLOWED_CLAIMS: ${NETSIDIAN_OIDC_ALLOWED_CLAIMS:-}
+      NETSIDIAN_OIDC_ALLOW_ALL_USERS: ${NETSIDIAN_OIDC_ALLOW_ALL_USERS:-false}
+      NETSIDIAN_OIDC_ADMIN_CLAIMS: ${NETSIDIAN_OIDC_ADMIN_CLAIMS:-}
+      NETSIDIAN_OIDC_EMAIL_CLAIM: ${NETSIDIAN_OIDC_EMAIL_CLAIM:-/email}
+      NETSIDIAN_OIDC_NAME_CLAIM: ${NETSIDIAN_OIDC_NAME_CLAIM:-/name}
+      NETSIDIAN_OIDC_EMAIL_VERIFIED_CLAIM: ${NETSIDIAN_OIDC_EMAIL_VERIFIED_CLAIM:-/email_verified}
+      NETSIDIAN_LOCAL_FOLDER_PICK: ${NETSIDIAN_LOCAL_FOLDER_PICK:-true}
+      NETSIDIAN_STORAGE_DRIVER: ${NETSIDIAN_STORAGE_DRIVER:-local}
+      NETSIDIAN_S3_BUCKET: ${NETSIDIAN_S3_BUCKET:-}
+      NETSIDIAN_S3_REGION: ${NETSIDIAN_S3_REGION:-us-east-1}
+      NETSIDIAN_S3_ENDPOINT: ${NETSIDIAN_S3_ENDPOINT:-}
+      NETSIDIAN_S3_PREFIX: ${NETSIDIAN_S3_PREFIX:-netsidian}
+      NETSIDIAN_S3_PATH_STYLE: ${NETSIDIAN_S3_PATH_STYLE:-false}
+      NETSIDIAN_STORAGE_ALLOWED_ENDPOINTS: ${NETSIDIAN_STORAGE_ALLOWED_ENDPOINTS:-}
+      NETSIDIAN_STORAGE_TRUSTED_STS_ENDPOINTS: ${NETSIDIAN_STORAGE_TRUSTED_STS_ENDPOINTS:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    volumes:
+      - netsidian-state:/netsidian-state
+      - /tmp/netsidian-large-vault:/large-vault:ro,z
+    # No container healthcheck: distroless has no shell/wget and the binary
+    # has no self-probe flag yet. Probe from the host instead:
+    #   curl -f http://127.0.0.1:3001/healthz
+
+volumes:
+  netsidian-state:

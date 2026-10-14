@@ -1,0 +1,12 @@
+{
+ "$schema":"http://json-schema.org/draft-07/schema#","type":"object",
+ "properties":{
+  "replicaCount":{"type":"integer","const":1},
+  "containerPort":{"type":"integer","minimum":1,"maximum":65535},
+  "auth":{"type":"object","required":["mode"],"properties":{"mode":{"enum":["local","external","mixed"]}}},
+  "storage":{"type":"object","required":["driver"],"properties":{"driver":{"enum":["local","s3"]}}},
+  "signupEnabled":{"enum":["true","false",true,false]},
+  "env":{"type":"object","propertyNames":{"pattern":"^[A-Z_][A-Z0-9_]*$"},"additionalProperties":{"type":["string","boolean","number"]}},
+  "existingSecret":{"type":"string"}
+ }
+}

@@ -1,0 +1,10 @@
+import {useEffect,useRef,useState} from 'react';
+import {Icon} from './Icon';
+let seen=false;try{seen=sessionStorage.getItem('netsidian:link-hints:seen')==='true'}catch{}
+const preference='netsidian:link-hints:disabled';
+export function LinkWritingHint({enabled=true}:{enabled?:boolean}){
+ const host=useRef<HTMLDivElement>(null),[open,setOpen]=useState(false);
+ useEffect(()=>{const owner=host.current?.parentElement;if(!owner||!enabled)return;const show=()=>{let disabled=false;try{disabled=localStorage.getItem(preference)==='true'}catch{}if(!seen&&!disabled){seen=true;try{sessionStorage.setItem('netsidian:link-hints:seen','true')}catch{};setOpen(true)}};const reset=()=>{seen=false;try{sessionStorage.removeItem('netsidian:link-hints:seen')}catch{}};window.addEventListener('netsidian:link-hints-enabled',reset);owner.addEventListener('focusin',show);if(owner.contains(document.activeElement))show();return()=>{owner.removeEventListener('focusin',show);window.removeEventListener('netsidian:link-hints-enabled',reset)}},[enabled]);
+ const close=(disable=false)=>{seen=true;setOpen(false);if(disable)try{localStorage.setItem(preference,'true')}catch{};requestAnimationFrame(()=>host.current?.parentElement?.querySelector<HTMLElement>('textarea,[contenteditable="true"]')?.focus())};
+ return <div className="link-writing-hint-anchor" ref={host}>{enabled&&open&&<aside className="link-writing-hint" role="note" aria-label="Document linking tip" onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();close()}}}><header><Icon name="link" size={15}/><strong>Connect your thoughts</strong><button type="button" aria-label="Dismiss linking tip" onClick={()=>close()}><Icon name="close" size={13}/></button></header><p>Type <kbd>[[</kbd> or <kbd>Ctrl/⌘ Space</kbd> to search and link another document. Choose with ↑ ↓ and Enter.</p><footer><button type="button" onClick={()=>close(true)}>Don’t show again</button><button type="button" onClick={()=>close()}>Got it</button></footer></aside>}</div>;
+}

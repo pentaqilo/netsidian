@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" color="#FFFFFF" role="img" aria-label="Netsidian">
+<title>Netsidian</title>
+<style>@media(prefers-color-scheme:light){svg{color:#20201E}}</style>
+<path fill="currentColor" d="M48 48 H88 V208 H48 Z M168 48 H208 V208 H168 Z"/>
+<path fill="var(--accent, #0561f5)" d="M88 48 L168 152 L168 208 L88 104 Z"/>
+</svg>

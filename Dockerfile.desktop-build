@@ -1,0 +1,14 @@
+# Native Linux build toolchain only. The script mounts a temporary source tree;
+# this image never copies or packages application source or user data.
+FROM golang:1.27
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cache the pinned Go module graph in the builder layer.
+WORKDIR /deps
+COPY go.mod go.sum ./
+RUN go mod download
+WORKDIR /build

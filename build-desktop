@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+case "$(uname -s)" in
+  Linux) exec "$repo_root/build-desktop-linux" "$@" ;;
+  Darwin) exec "$repo_root/build-desktop-macos" "$@" ;;
+  MINGW*|MSYS*|CYGWIN*) exec python "$repo_root/scripts/build-desktop.py" --platform windows "$@" ;;
+  *) printf 'Unsupported desktop platform\n' >&2; exit 1 ;;
+esac

@@ -1,0 +1,1 @@
+ALTER TABLE operations ADD COLUMN origin_path TEXT NOT NULL DEFAULT '';

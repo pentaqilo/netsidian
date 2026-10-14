@@ -1,0 +1,205 @@
+name: Release
+on:
+  push:
+    tags: ['[0-9]*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release tag to build
+        required: true
+        default: '0.1.0'
+env:
+  RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    name: Desktop ${{ matrix.platform }} ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, platform: linux, arch: amd64, goarch: amd64, cgo: '1'}
+          - {os: windows-2025, platform: windows, arch: amd64, goarch: amd64, cgo: '0'}
+          - {os: macos-15-intel, platform: macos, arch: amd64, goarch: amd64, cgo: '1'}
+          - {os: macos-15, platform: macos, arch: arm64, goarch: arm64, cgo: '1'}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Linux native dependencies
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev build-essential pkg-config
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Test frontend
+        if: matrix.platform == 'linux'
+        working-directory: frontend
+        run: npm test
+      - name: Test services
+        if: matrix.platform == 'linux'
+        env:
+          CGO_ENABLED: '0'
+        run: go test -tags server -count=1 ./internal/...
+      - name: Build desktop
+        shell: bash
+        env:
+          CGO_ENABLED: ${{ matrix.cgo }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p bin
+          suffix=''
+          if [ '${{ matrix.platform }}' = windows ]; then suffix='.exe'; fi
+          go build -trimpath -tags production -ldflags="-s -w" -o "bin/netsidian${suffix}" .
+      - name: Package desktop
+        shell: bash
+        run: python scripts/package-release.py --version "$RELEASE_VERSION" --platform '${{ matrix.platform }}' --arch '${{ matrix.arch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+  docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/pentaqilo/netsidian:${{ env.RELEASE_VERSION }}
+            ghcr.io/pentaqilo/netsidian:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/pentaqilo/netsidian
+            org.opencontainers.image.version=${{ env.RELEASE_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+      - name: Record image digest
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          mkdir -p release-assets
+          printf 'ghcr.io/pentaqilo/netsidian:%s\nghcr.io/pentaqilo/netsidian@%s\n' "$RELEASE_VERSION" "$IMAGE_DIGEST" > release-assets/docker-image.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: release-assets/docker-image.txt
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.19.0
+      - name: Prepare release chart
+        run: |
+          mkdir -p chart-stage release-assets
+          cp -R helm/netsidian chart-stage/netsidian
+          cp LICENSE chart-stage/netsidian/LICENSE
+          # Keep local development values unchanged; release packages use GHCR.
+          sed -i 's|^  repository: netsidian$|  repository: ghcr.io/pentaqilo/netsidian|' chart-stage/netsidian/values.yaml
+          sed -i "s|^  tag: local$|  tag: \"$RELEASE_VERSION\"|" chart-stage/netsidian/values.yaml
+      - name: Validate and package chart
+        run: |
+          helm lint --strict chart-stage/netsidian
+          helm template netsidian chart-stage/netsidian > /tmp/netsidian-default.yaml
+          helm template netsidian chart-stage/netsidian --set ingress.enabled=true --set auth.mode=mixed --set storage.driver=s3 --set existingSecret=netsidian-credentials > /tmp/netsidian-providers.yaml
+          helm package chart-stage/netsidian --version "$RELEASE_VERSION" --app-version "$RELEASE_VERSION" --destination release-assets
+          helm lint --strict "release-assets/netsidian-$RELEASE_VERSION.tgz"
+          helm template netsidian "release-assets/netsidian-$RELEASE_VERSION.tgz" > /tmp/netsidian-release.yaml
+          grep -F "ghcr.io/pentaqilo/netsidian:$RELEASE_VERSION" /tmp/netsidian-release.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: release-assets/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: [desktop, docker, helm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          # Docker build records cannot be extracted as release artifacts.
+          pattern: '!*.dockerbuild'
+          path: release-assets
+          merge-multiple: true
+      - name: Checksums and GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS
+          cat > /tmp/release-notes.md <<EOF
+          # Netsidian $RELEASE_VERSION
+
+          Desktop downloads: Windows x64, Linux x64, macOS Intel and Apple Silicon. Extract the matching archive; installation instructions and the Apache-2.0 license are included.
+
+          Linux requires GTK4 and WebKitGTK 6.0. Windows requires Microsoft Edge WebView2 Runtime. macOS bundles are ad-hoc signed and are not Apple notarized.
+
+          Docker (Linux amd64 and arm64):
+          \`docker pull ghcr.io/pentaqilo/netsidian:$RELEASE_VERSION\`
+
+          Run with persistent storage:
+          \`docker run -d --name netsidian -p 127.0.0.1:3000:3000 -v netsidian-state:/netsidian-state ghcr.io/pentaqilo/netsidian:$RELEASE_VERSION\`
+
+          Open http://localhost:3000 to create the first administrator. Desktop MCP is available in Settings → MCP & agents.
+
+          Helm chart (version and image tag match this release):
+          \`helm install netsidian ./netsidian-$RELEASE_VERSION.tgz --namespace netsidian --create-namespace --set persistence.storageClassName=\`
+
+          SHA256SUMS verifies downloads; docker-image.txt records the immutable image digest.
+          EOF
+          if [ -f "../.github/release-notes/$RELEASE_VERSION.md" ]; then
+            cp "../.github/release-notes/$RELEASE_VERSION.md" /tmp/release-notes.md
+          fi
+          gh release create "$RELEASE_VERSION" --verify-tag --title "Netsidian $RELEASE_VERSION" --notes-file /tmp/release-notes.md ./*

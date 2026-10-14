@@ -1,0 +1,132 @@
+{{- if ne (int .Values.replicaCount) 1 }}{{ fail "SQLite requires replicaCount=1" }}{{ end -}}
+{{- if not (has .Values.auth.mode (list "local" "external" "mixed")) }}{{ fail "auth.mode must be local, external or mixed; no-auth is loopback-only" }}{{ end -}}
+{{- if not (has .Values.storage.driver (list "local" "s3")) }}{{ fail "storage.driver must be local or s3" }}{{ end -}}
+{{- range $key, $value := .Values.env }}
+{{- if has $key (list "NETSIDIAN_AUTH_MODE" "NETSIDIAN_STORAGE_DRIVER" "NETSIDIAN_DATABASE_DRIVER" "NETSIDIAN_BIND" "NETSIDIAN_PORT" "NETSIDIAN_STATE_DIR" "NETSIDIAN_SIGNUP_ENABLED" "NETSIDIAN_LOCAL_FOLDER_PICK") }}{{ fail (printf "%s is controlled by the chart runtime contract" $key) }}{{ end -}}
+{{- if or (contains "SECRET" $key) (contains "TOKEN" $key) (contains "PASSWORD" $key) (eq $key "AWS_ACCESS_KEY_ID") }}{{ fail (printf "%s belongs in existingSecret" $key) }}{{ end -}}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "netsidian.fullname" . }}
+  labels:
+    {{- include "netsidian.labels" . | nindent 4 }}
+spec:
+  # SQLite on a ReadWriteOnce volume => exactly one writer / replica.
+  replicas: {{ .Values.replicaCount }}
+  serviceName: {{ include "netsidian.fullname" . }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      {{- include "netsidian.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "netsidian.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+        runAsGroup: {{ .Values.podSecurityContext.runAsGroup }}
+        fsGroup: {{ .Values.podSecurityContext.fsGroup }}
+        seccompProfile:
+          type: {{ .Values.podSecurityContext.seccompProfile.type }}
+      containers:
+        - name: netsidian
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          env:
+            # --- Non-overridable runtime contract (see values.yaml) ---
+            # Reachable server with explicit authentication and provider settings.
+            - name: NETSIDIAN_BIND
+              value: "0.0.0.0"
+            - name: NETSIDIAN_AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: NETSIDIAN_PORT
+              value: "{{ .Values.containerPort }}"
+            - name: NETSIDIAN_STATE_DIR
+              value: {{ .Values.persistence.mountPath | quote }}
+            # sqlite is the ONLY implemented driver.
+            - name: NETSIDIAN_DATABASE_DRIVER
+              value: "sqlite"
+            # --- Overridable ---
+            - name: NETSIDIAN_SIGNUP_ENABLED
+              value: {{ .Values.signupEnabled | quote }}
+            - name: NETSIDIAN_STORAGE_DRIVER
+              value: {{ .Values.storage.driver | quote }}
+            - name: NETSIDIAN_LOCAL_FOLDER_PICK
+              value: "false"
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+          {{- if .Values.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.existingSecret | quote }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              # Real dependency health: SQL ping + storage stat
+              # (200 healthy, 503 unavailable). /healthz is aliased.
+              path: /api/v1/health
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.containerPort }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.containerSecurityContext.allowPrivilegeEscalation }}
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Whole state dir mounted here (database/ secrets/ journal/
+            # history/ content/). No subPath — the app owns the layout.
+            - name: state
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+        labels:
+          {{- include "netsidian.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClassName }}
+        storageClassName: {{ .Values.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}

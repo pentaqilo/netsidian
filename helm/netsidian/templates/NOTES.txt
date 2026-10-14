@@ -1,0 +1,22 @@
+Netsidian document workspace is deployed as {{ include "netsidian.fullname" . }}.
+
+Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Import into the local cluster before installation:
+  k3d image import {{ .Values.image.repository }}:{{ .Values.image.tag }} -c "<cluster-name>"
+
+Open the local validation endpoint:
+  kubectl --context "<context-name>" -n {{ .Release.Namespace }} port-forward svc/{{ include "netsidian.fullname" . }} 3488:{{ .Values.service.port }}
+  http://localhost:3488
+{{ if .Values.ingress.enabled }}
+Ingress (requires local hostname resolution): http://{{ .Values.ingress.host }}
+{{ end }}
+Authentication: {{ .Values.auth.mode }}. Storage: {{ .Values.storage.driver }}.
+{{ if ne .Values.auth.mode "external" }}On a fresh volume, create the first administrator on the setup page.
+Setup works with general signup disabled. No account/password is supplied.
+{{ else }}Sign in through the configured OIDC provider. Administrator admission
+comes from configured claim rules. No local password login is offered.
+{{ end }}
+The PVC contains SQLite, Markdown, revisions, journal and authentication state.
+Preserve it during upgrades. Do not delete the namespace/PVC to upgrade.
+SQLite requires exactly one replica even when document storage uses S3.
+OIDC/AWS credentials belong in an existing Secret; use existingSecret.

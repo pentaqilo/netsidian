@@ -1,0 +1,85 @@
+# Taskfile for Netsidian (go-task, v3 schema). Run from this directory
+# (Go module root; frontend lives in ./frontend).
+#
+# Grounded in verified facts (file:line):
+#   - Server env surface:   internal/config/config.go L38-55, L77, L83-85
+#   - Startup log "auth=...": internal/bootstrap/server_mode.go L30-31
+#   - embed //go:embed all:frontend/dist: main.go L13
+#   - Proven build recipe: CGO_ENABLED=0 + -tags server (server_mode.go L1)
+version: "3"
+
+vars:
+  BIN: bin/netsidian
+
+tasks:
+  default:
+    desc: Aggregate build — production frontend then Go binary.
+    deps: [frontend]
+    cmds:
+      - task: build
+
+  frontend-install:
+    desc: Install frontend dependencies (./frontend).
+    dir: frontend
+    cmds:
+      - npm ci
+
+  frontend-build:
+    desc: Typecheck + production build of the SPA (output ./frontend/dist).
+    dir: frontend
+    # On this dev mount node_modules/.bin symlinks are broken, so the tools
+    # are invoked through `node <pkg>/bin/...` directly instead of npx or the
+    # package.json "build" script. In the Dockerfile a clean image uses normal
+    # `npm run build` — the workaround is only needed on the broken mount.
+    cmds:
+      - node node_modules/typescript/bin/tsc --noEmit
+      - node node_modules/vite/bin/vite.js build
+
+  frontend:
+    desc: Install + build frontend.
+    deps: [frontend-install]
+    cmds:
+      - task: frontend-build
+
+  test:
+    desc: Unit tests (server build tag, pure-Go sqlite => CGO disabled).
+    cmds:
+      - CGO_ENABLED=0 go test -tags server -count=1 ./internal/...
+
+  vet:
+    desc: Static analysis.
+    cmds:
+      - CGO_ENABLED=0 go vet -tags server ./...
+
+  build:
+    desc: Build the server binary into ./bin/netsidian.
+    cmds:
+      - CGO_ENABLED=0 go build -tags server -o bin/netsidian .
+
+  build-desktop:
+    desc: Build the native desktop binary (requires GTK4 and WebKitGTK-6.0).
+    deps: [frontend]
+    cmds:
+      - mkdir -p bin
+      - go build -o bin/netsidian-desktop .
+
+  run:
+    desc: Run the built binary with safe defaults (built first if missing).
+    deps: [build]
+    env:
+      # Defaults mirror internal/config/config.go Load():
+      NETSIDIAN_BIND: '{{.NETSIDIAN_BIND | default "127.0.0.1"}}' # config.go L39
+      NETSIDIAN_PORT: '{{.NETSIDIAN_PORT | default "3000"}}' # config.go L55
+      NETSIDIAN_AUTH_MODE: '{{.NETSIDIAN_AUTH_MODE | default "none"}}' # config.go L40
+      # NETSIDIAN_STATE_DIR default: $XDG_STATE_HOME/netsidian else
+      # ~/.local/state/netsidian (config.go L42, L129-138). SQLite lives at
+      # <state>/database/netsidian.db, auth secret auto-generated under
+      # <state>/secrets/auth_secret (config.go L77-78) — no secret env exists.
+      NETSIDIAN_STATE_DIR: '{{.NETSIDIAN_STATE_DIR | default (printf "%s/netsidian-state" (env "PWD"))}}'
+    # SECURITY GUARD (config.go L83-85): bind 0.0.0.0 with auth mode "none"
+    # is REJECTED at startup ("no-auth mode must not bind a public
+    # interface"). To expose the server publicly, set NETSIDIAN_AUTH_MODE=local
+    # together with NETSIDIAN_BIND=0.0.0.0 (or run behind a TLS reverse proxy
+    # with NETSIDIAN_BIND=127.0.0.1).
+    cmds:
+      - ./bin/netsidian

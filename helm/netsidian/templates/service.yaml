@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netsidian.fullname" . }}
+  labels:
+    {{- include "netsidian.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    # Service port 80 -> container port 3000 (documented in README).
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "netsidian.selectorLabels" . | nindent 4 }}

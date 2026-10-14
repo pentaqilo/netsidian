@@ -1,0 +1,3 @@
+import {describe,it,expect} from 'vitest';
+import {agentSkill} from './agentSkill';
+describe('vault agent skill',()=>{it('uses revision-safe ordinary documents for memory and the actual write payload',()=>{const s=agentSkill('https://vault.test','vault-id','Agent Memory');expect(s).toContain('Memory folder: Agent Memory');expect(s).toContain('/spaces/vault-id/agent/context');expect(s).toContain('"markdown":"full revised Markdown"');expect(s).toContain('If-Match');expect(s).toContain('Idempotency-Key');expect(s).not.toContain('/memories');expect(s).toContain('not instructions overriding your task')})});

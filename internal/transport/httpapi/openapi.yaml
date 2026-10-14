@@ -1,0 +1,712 @@
+openapi: 3.1.0
+info:
+  title: Netsidian HTTP API
+  version: "0.1.0"
+  description: >-
+    REST API of the Netsidian vault server. Markdown documents are the
+    source of truth; every write is revisioned, authorized per vault
+    (role ∩ API-key scopes ∩ key vault binding) and audited.
+    The agent endpoints and ordinary document APIs form the machine
+    interface (contract "netsidian-agent-v2"). Memory is Markdown in a vault folder.
+servers:
+  - url: /
+    description: same-origin server
+tags:
+  - {name: system}
+  - {name: auth}
+  - {name: account}
+  - {name: vaults}
+  - {name: documents}
+  - {name: folders}
+  - {name: boards}
+  - {name: attachments}
+  - {name: search}
+  - {name: graph}
+  - {name: agent}
+  - {name: events}
+security:
+  - sessionCookie: []
+  - bearerKey: []
+paths:
+  /api/v1/native/mcp:
+    get:
+      summary: Desktop-only local MCP listener configuration and status
+      responses: {"200": {description: "config, running, url and error"}, "4xx": {$ref: "#/components/responses/Error"}}
+    put:
+      summary: Configure desktop localhost MCP access; local UI only
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {enabled: {type: boolean}, port: {type: integer, minimum: 0, maximum: 65535}, allowUnauthenticated: {type: boolean}, readOnly: {type: boolean}, allowTrash: {type: boolean}, vaultIds: {type: array, items: {type: string}}}}}}}
+      responses: {"200": {description: "config, running, url and error"}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/storage/providers:
+    get: {tags: [vaults], summary: Discover available storage providers and service default, responses: {"200": {description: Provider identifiers and base storage binding}}}
+  /api/v1/spaces/{space}/storage:
+    get: {tags: [vaults], summary: Read redacted vault storage configuration (human owner), parameters: [{name: space, in: path, required: true, schema: {type: string}}], responses: {"200": {description: Provider settings without credentials}, "403": {$ref: "#/components/responses/Error"}}}
+    put: {tags: [vaults], summary: Configure an empty vault or rotate credentials (human owner), parameters: [{name: space, in: path, required: true, schema: {type: string}}], requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/VaultStorage"}}}}, responses: {"200": {description: Verified and sealed provider configuration}, "400": {$ref: "#/components/responses/Error"}, "409": {description: Vault is not empty or location changed}}}
+  /api/v1/auth/oauth/providers:
+    get:
+      summary: List configured sign-in providers
+      security: []
+      responses:
+        '200':
+          description: Provider names and login URLs
+  /api/v1/auth/oauth/start:
+    get:
+      summary: Start OAuth authorization code login with PKCE
+      security: []
+      responses:
+        '302':
+          description: Redirect to provider
+  /api/v1/auth/oauth/callback:
+    get:
+      summary: Verify provider identity and create a browser session
+      security: []
+      responses:
+        '303':
+          description: Redirect to workspace
+
+  /livez:
+    get: {tags: [system], security: [], summary: Process liveness independent of backing services, responses: {"200": {description: Process is serving requests}}}
+  /healthz:
+    get: {tags: [system], security: [], summary: Dependency readiness probe, responses: {"200": {description: Ready}, "503": {description: Backing service unavailable}}}
+  /api/v1/health:
+    get: {tags: [system], security: [], summary: Dependency readiness probe, responses: {"200": {description: Ready}, "503": {description: Backing service unavailable}}}
+  /api/v1/openapi.json:
+    get: {tags: [system], security: [], summary: Live API contract as JSON (generated from the route table), responses: {"200": {description: OpenAPI JSON}}}
+  /api/v1/openapi.yaml:
+    get: {tags: [system], security: [], summary: Live API contract as YAML (generated from the route table), responses: {"200": {description: OpenAPI YAML}}}
+  /api/v1/settings:
+    get: {tags: [system], security: [], summary: Public instance settings and runtime capabilities, responses: {"200": {description: Settings and capabilities for the actual runtime, content: {application/json: {schema: {$ref: "#/components/schemas/InstanceSettings"}}}}}}
+  /api/v1/native/status:
+    get: {tags: [system], security: [], summary: Native (desktop bridge) capability flag, responses: {"200": {description: "{native: bool}"}}}
+  /api/v1/native/vaults/attach:
+    post: {tags: [system], summary: Attach a vault through the native bridge, parameters: [{name: background, in: query, schema: {type: boolean, default: false}}], requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: cancelled}, "201": {description: attached}, "202": {description: Attached immediately with background loading queued}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/local/status:
+    get: {tags: [system], security: [], summary: Local mode enabled flag, responses: {"200": {description: "{enabled: bool}"}}}
+  /api/v1/local/folders:
+    get: {tags: [system], summary: List pickable local folders, responses: {"200": {description: folder list}, "4xx": {$ref: "#/components/responses/Error"}}}
+    post: {tags: [system], summary: Register a local folder, requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/local/vaults:
+    post: {tags: [system], summary: Attach a vault backed by a local folder, parameters: [{name: background, in: query, schema: {type: boolean, default: false}}], requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"201": {description: created space}, "202": {description: Attached immediately with background loading queued}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/auth/setup:
+    post: {tags: [auth], security: [], summary: Create the first operator account (one-time), requestBody: {content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}, responses: {"201": {description: session cookie issued}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/auth/login:
+    post: {tags: [auth], security: [], summary: Password login; when a confirmed second factor is enrolled returns a pending challenge instead of a session cookie, requestBody: {content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}, responses: {"200": {description: "session cookie issued, or {challenge:true, challengeToken} when a second factor is required"}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/auth/signup:
+    post: {tags: [auth], security: [], summary: Account self-service signup (when enabled), requestBody: {content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}, responses: {"201": {description: session cookie issued}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/admin/settings:
+    get: {tags: [system], summary: Read effective authentication and claim policy (human administrator), responses: {"200": {description: Effective policy without secrets}, "403": {$ref: "#/components/responses/Error"}}}
+  /api/v1/admin/users:
+    get: {tags: [system], summary: Search accounts (human administrator), parameters: [{name: q, in: query, schema: {type: string, maxLength: 200}}, {name: offset, in: query, schema: {type: integer, minimum: 0}}], responses: {"200": {description: Paginated accounts without credential material}, "403": {$ref: "#/components/responses/Error"}}}
+  /api/v1/admin/users/{id}:
+    patch: {tags: [system], summary: Change account access or local role and revoke sessions (human administrator), parameters: [{name: id, in: path, required: true, schema: {type: string}}], requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {disabled: {type: boolean}, isOperator: {type: boolean}, revokeSessions: {type: boolean}}}}}}, responses: {"200": {description: Change audited atomically}, "403": {$ref: "#/components/responses/Error"}, "409": {description: Self-lockout, last-administrator or provider-managed-role protection}}}
+  /api/v1/admin/audit:
+    get: {tags: [system], summary: Read account and role audit events (human administrator), parameters: [{name: offset, in: query, schema: {type: integer, minimum: 0}}], responses: {"200": {description: Paginated audit events}, "403": {$ref: "#/components/responses/Error"}}}
+  /api/v1/auth/logout:
+    post: {tags: [auth], summary: End the session, responses: {"200": {description: logged out}}}
+  /api/v1/auth/password:
+    post:
+      tags: [auth]
+      summary: Change own local-account password (human session; verifies current password; revokes all sessions and personal API keys atomically)
+      requestBody: {content: {application/json: {schema: {type: object, required: [currentPassword, newPassword], properties: {currentPassword: {type: string, maxLength: 1048576}, newPassword: {type: string, minLength: 10, maxLength: 1024}, code: {type: string, maxLength: 128, description: "Authenticator or recovery code; required when enrolled"}}}}}}
+      responses:
+        "200": {description: "Password changed; {ok, reauthRequired, sessionsRevoked, keysRevoked}; session cookie cleared"}
+        "401": {description: Current password incorrect or session invalid}
+        "403": {description: API-key principal cannot change passwords}
+        "409": {description: Account is provider-managed or verified credentials changed concurrently}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/challenge/totp:
+    post:
+      tags: [auth]
+      security: []
+      summary: Complete a pending login challenge with a current TOTP code; issues the session cookie
+      requestBody: {content: {application/json: {schema: {type: object, required: [challengeToken, code], properties: {challengeToken: {type: string}, code: {type: string, minLength: 6, maxLength: 128}}}}}}
+      responses:
+        "200": {description: "session cookie issued; {userId, displayName}"}
+        "401": {description: "invalid code, code already used, or challenge expired/attempts exhausted"}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/challenge/recovery:
+    post:
+      tags: [auth]
+      security: []
+      summary: Complete a pending login challenge with a single-use recovery code; issues the session cookie and consumes the code
+      requestBody: {content: {application/json: {schema: {type: object, required: [challengeToken, code], properties: {challengeToken: {type: string}, code: {type: string, maxLength: 64}}}}}}
+      responses:
+        "200": {description: "session cookie issued; {userId, displayName}"}
+        "401": {description: "invalid or already-used recovery code, or challenge expired/attempts exhausted"}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/totp/enroll:
+    post:
+      tags: [auth]
+      summary: Start second-factor enrollment (human session; verifies current password); returns the shared secret and recovery codes once; factor not enforced until confirmed
+      requestBody: {content: {application/json: {schema: {type: object, required: [password], properties: {password: {type: string, maxLength: 1048576}}}}}}
+      responses:
+        "201": {description: "{secret, otpauthUrl, recoveryCodes} shown once"}
+        "401": {description: current password incorrect}
+        "403": {description: API-key principal or non-local auth mode}
+        "409": {description: provider-managed account or factor already enrolled}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/totp/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm a pending enrollment within ten minutes; enables the factor and revokes all sessions and personal tokens
+      requestBody: {content: {application/json: {schema: {type: object, required: [code], properties: {code: {type: string, minLength: 6, maxLength: 128}}}}}}
+      responses:
+        "200": {description: "{enabled:true, pending:false, recoveryCodesRemaining}"}
+        "401": {description: invalid or already-used code}
+        "404": {description: no pending enrollment}
+        "409": {description: already enrolled}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/totp/disable:
+    post:
+      tags: [auth]
+      summary: Remove the second factor with current password and authenticator or recovery code; revokes sessions and personal tokens
+      requestBody: {content: {application/json: {schema: {type: object, required: [password, code], properties: {password: {type: string, maxLength: 1048576}, code: {type: string, minLength: 6, maxLength: 128}}}}}}
+      responses:
+        "200": {description: "{ok:true}"}
+        "401": {description: current password or code incorrect/reused}
+        "409": {description: factor not enrolled}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/auth/totp/recovery-codes:
+    post:
+      tags: [auth]
+      summary: Regenerate recovery codes (requires current password and authenticator or recovery code); invalidates the previous set
+      requestBody: {content: {application/json: {schema: {type: object, required: [password, code], properties: {password: {type: string, maxLength: 1048576}, code: {type: string, minLength: 6, maxLength: 128}}}}}}
+      responses:
+        "200": {description: "{recoveryCodes} shown once"}
+        "401": {description: current password or code incorrect/reused}
+        "409": {description: factor not enrolled}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/me/totp:
+    get: {tags: [account], summary: Second-factor status for the account UI, responses: {"200": {description: "{enabled, pending, recoveryCodesRemaining}"}, "401": {$ref: "#/components/responses/Error"}}}
+  /api/v1/admin/users/{id}/totp-reset:
+    post:
+      tags: [system]
+      summary: Operator recovery - remove a user's second factor so they can sign in with their password and re-enroll (audited; never issues a session as the user)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [password], properties: {password: {type: string, maxLength: 1048576}, code: {type: string, maxLength: 128, description: "Operator authenticator or recovery code; required when enrolled"}}}}}}
+      responses:
+        "200": {description: "{ok:true}"}
+        "403": {description: human operator required}
+        "404": {description: user or enrolled factor not found}
+        "4xx": {$ref: "#/components/responses/Error"}
+  /api/v1/me:
+    get: {tags: [account], summary: Current principal including canChangePassword eligibility and second-factor status, responses: {"200": {description: user object}, "401": {$ref: "#/components/responses/Error"}}}
+  /api/v1/me/integrations:
+    get:
+      tags: [account]
+      summary: Read-only backend and OAuth configuration diagnostics for human operators
+      responses:
+        "200": {description: Storage kind, backend reachability and OAuth configuration flags; no credentials}
+        "403": {description: Human operator required}
+  /api/v1/me/preferences:
+    get: {tags: [account], summary: User preferences, responses: {"200": {description: preferences}}}
+    put: {tags: [account], summary: Replace preferences, requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: saved}}}
+  /api/v1/me/keys:
+    get: {tags: [account], summary: List my API keys (no secrets), responses: {"200": {description: key records}}}
+    post:
+      tags: [account]
+      summary: Create an API key; the secret is returned exactly once
+      requestBody: {content: {application/json: {schema: {type: object, properties: {label: {type: string}, spaceIds: {type: array, items: {type: string}}, scopes: {type: array, items: {type: string}}, expiresInDays: {type: integer}}}}}}
+      responses: {"201": {description: key record plus one-time secret}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/me/keys/{id}:
+    delete: {tags: [account], summary: Revoke an API key, parameters: [{$ref: "#/components/parameters/IdPath"}], responses: {"200": {description: revoked}}}
+  /api/v1/invitations/accept:
+    post: {tags: [account], summary: Accept a vault invitation by token, requestBody: {content: {application/json: {schema: {type: object, properties: {token: {type: string}}}}}}, responses: {"200": {description: joined}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces:
+    get: {tags: [vaults], summary: Vaults the caller belongs to (with roles), responses: {"200": {description: "{spaces: [...]}"}}}
+    post: {tags: [vaults], summary: Create a vault, requestBody: {content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, kind: {type: string, enum: [shared, personal]}, storage: {$ref: "#/components/schemas/VaultStorage"}}}}}}, responses: {"201": {description: created}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get: {tags: [vaults], summary: Vault detail, responses: {"200": {description: space}, "4xx": {$ref: "#/components/responses/Error"}}}
+    put: {tags: [vaults], summary: Rename vault, requestBody: {content: {application/json: {schema: {type: object, properties: {name: {type: string}}}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+    delete: {tags: [vaults], summary: Delete vault (owner; requires typed name confirmation), requestBody: {content: {application/json: {schema: {type: object, properties: {confirmation: {type: string}}}}}}, responses: {"200": {description: deleted}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/archive:
+    post: {tags: [vaults], summary: Archive vault, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/unarchive:
+    post: {tags: [vaults], summary: Unarchive vault, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/load:
+    get:
+      tags: [vaults]
+      summary: Read background vault loading progress (vault members only)
+      parameters: [{name: space, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "load is null for vaults without a job; otherwise spaceId, phase (queued/scanning/indexing/resolving/ready/error), completed, total, skipped, optional error, updatedAt"}
+        "404": {$ref: "#/components/responses/Error"}
+  /api/v1/spaces/{space}/load/retry:
+    post:
+      tags: [vaults]
+      summary: Retry a stopped local vault scan without duplicating committed documents (human owner)
+      parameters: [{name: space, in: path, required: true, schema: {type: string}}]
+      responses:
+        "202": {description: Background loading queued}
+        "409": {description: Vault already loading}
+        "403": {$ref: "#/components/responses/Error"}
+  /api/v1/spaces/{space}/workspace:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get: {tags: [vaults], summary: Per-user workspace state, responses: {"200": {description: workspace state}}}
+    put: {tags: [vaults], summary: Store per-user workspace state, requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: ok}}}
+  /api/v1/spaces/{space}/export:
+    get: {tags: [vaults], summary: Stream a vault export archive, responses: {"200": {description: archive bytes}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/invitations:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    post: {tags: [vaults], summary: Invite a member, requestBody: {content: {application/json: {schema: {type: object, properties: {email: {type: string}, role: {$ref: "#/components/schemas/Role"}}}}}}, responses: {"201": {description: invitation}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/invitations/{id}:
+    delete: {tags: [vaults], summary: Revoke an invitation, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/IdPath"}], responses: {"200": {description: revoked}}}
+  /api/v1/spaces/{space}/sharing/users:
+    get:
+      tags: [vaults]
+      summary: Find active provisioned users (human vault owner only)
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 200}}]
+      responses: {"200": {description: At most 20 matching users with id/displayName/email. Federated accounts appear after first sign-in.}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/members:
+    post:
+      tags: [vaults]
+      summary: Share with a provisioned user (human vault owner only)
+      parameters: [{$ref: "#/components/parameters/SpacePath"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [userId, role], properties: {userId: {type: string}, role: {type: string, enum: [viewer, editor, owner]}}}}}}
+      responses: {"201": {description: Access granted immediately}, "409": {description: User already has access}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/members/{member}:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: member, in: path, required: true, schema: {type: string}}]
+    put: {tags: [vaults], summary: Change member role, requestBody: {content: {application/json: {schema: {type: object, properties: {role: {$ref: "#/components/schemas/Role"}}}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+    delete: {tags: [vaults], summary: Remove a member, responses: {"200": {description: removed}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/lookup:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get:
+      summary: Resolve document metadata by exact canonical vault path without reading its body
+      parameters: [{name: path, in: query, required: true, schema: {type: string}}]
+      responses: {"200": {description: "id, path, kind, currentRevision, updatedAt and ETag"}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/documents:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: trashed, in: query, schema: {type: boolean}}]
+    get: {tags: [documents], summary: List document metadata with optional keyset pagination, parameters: [{name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500}}, {name: cursor, in: query, schema: {type: string}, description: Last path returned by the previous page}], responses: {"200": {description: "{documents: [DocMeta], nextCursor?, total?}; bodies are fetched only when opened"}}}
+    post:
+      tags: [documents]
+      summary: Create a note (idempotent with Idempotency-Key)
+      parameters: [{$ref: "#/components/parameters/IdempotencyKey"}]
+      requestBody: {content: {application/json: {schema: {type: object, required: [path, content], properties: {path: {type: string}, content: {type: string}}}}}}
+      responses: {"201": {description: DocMeta, content: {application/json: {schema: {$ref: "#/components/schemas/DocMeta"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/documents/{doc}:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}]
+    get: {tags: [documents], summary: Read a note (ETag = revision), responses: {"200": {description: document content object}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/{doc}/content:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}]
+    put:
+      tags: [documents]
+      summary: Save content with optimistic concurrency (If-Match current revision)
+      parameters: [{$ref: "#/components/parameters/IfMatch"}, {$ref: "#/components/parameters/IdempotencyKey"}]
+      requestBody: {content: {application/json: {schema: {type: object, required: [markdown], properties: {markdown: {type: string}}}}}}
+      responses: {"200": {description: SaveResult, content: {application/json: {schema: {$ref: "#/components/schemas/SaveResult"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/documents/{doc}/rename:
+    post: {tags: [documents], summary: Rename/move a document, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}], requestBody: {content: {application/json: {schema: {type: object, properties: {path: {type: string}}}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/{doc}/trash:
+    post: {tags: [documents], summary: Move to trash (If-Match guards the revision), parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}, {$ref: "#/components/parameters/IfMatch"}], responses: {"200": {description: trashed}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/{doc}/restore:
+    post: {tags: [documents], summary: Restore from trash, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}], responses: {"200": {description: restored}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/{doc}/revisions:
+    get: {tags: [documents], summary: Revision history, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}], responses: {"200": {description: revision list}}}
+  /api/v1/spaces/{space}/documents/{doc}/revisions/{rev}:
+    get: {tags: [documents], summary: Read one historical revision, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}, {name: rev, in: path, required: true, schema: {type: string}}], responses: {"200": {description: revision content}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/{doc}/backlinks:
+    get: {tags: [documents], summary: Backlinks to a document, parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}], responses: {"200": {description: backlink list}}}
+  /api/v1/spaces/{space}/text-files/{path}:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/PathWild"}]
+    get: {tags: [documents], summary: Read a plain text file (non-markdown), responses: {"200": {description: text}, "4xx": {$ref: "#/components/responses/Error"}}}
+    put: {tags: [documents], summary: Save a plain text file, requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/folders:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get: {tags: [folders], summary: List folders, responses: {"200": {description: folders}}}
+    post: {tags: [folders], summary: Create a folder, requestBody: {content: {application/json: {schema: {type: object, properties: {path: {type: string}}}}}}, responses: {"201": {description: created}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/folders/rename:
+    post: {tags: [folders], summary: Rename a folder subtree, parameters: [{$ref: "#/components/parameters/SpacePath"}], requestBody: {content: {application/json: {schema: {type: object, properties: {from: {type: string}, to: {type: string}}}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/folders/trash:
+    post: {tags: [folders], summary: Trash a folder subtree, parameters: [{$ref: "#/components/parameters/SpacePath"}], requestBody: {content: {application/json: {schema: {type: object, properties: {path: {type: string}}}}}}, responses: {"200": {description: trashed}, "4xx": {$ref: "#/components/responses/Error"}}}
+    get: {tags: [folders], summary: List trashed folders, parameters: [{$ref: "#/components/parameters/SpacePath"}], responses: {"200": {description: trashed folders}}}
+  /api/v1/spaces/{space}/folders/restore:
+    post: {tags: [folders], summary: Restore a trashed folder, parameters: [{$ref: "#/components/parameters/SpacePath"}], requestBody: {content: {application/json: {schema: {type: object}}}}, responses: {"200": {description: restored}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/boards:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get:
+      tags: [boards]
+      summary: List folder-backed boards
+      responses: {"200": {description: Board summaries}, "4xx": {$ref: "#/components/responses/Error"}}
+    post:
+      tags: [boards]
+      summary: Create a board using defaults or a configuration template
+      parameters: [{$ref: "#/components/parameters/IdempotencyKey"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: {type: string}
+                title: {type: string}
+                template: {type: string, description: Source board folder; ordering is not copied}
+                columns: {type: array, items: {$ref: "#/components/schemas/BoardColumn"}}
+      responses: {"201": {description: Resolved board}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/boards/board:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}]
+    get:
+      tags: [boards]
+      summary: Resolve board configuration and tasks derived from folder locations
+      responses: {"200": {description: Board with configuration revision ETag, content: {application/json: {schema: {$ref: "#/components/schemas/Board"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/boards/config:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+    put:
+      tags: [boards]
+      summary: Save board settings; move documents out before removing populated columns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [columns]
+              properties:
+                title: {type: string}
+                columns: {type: array, items: {$ref: "#/components/schemas/BoardColumn"}}
+                createDefaults: {type: object, properties: {column: {type: string}, content: {type: string}}}
+      responses: {"200": {description: Updated board}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/boards/tasks:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IdempotencyKey"}]
+    post:
+      tags: [boards]
+      summary: Create a Markdown task in a column
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                columnId: {type: string}
+                title: {type: string}
+                content: {type: string}
+      responses: {"201": {description: Created task}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/boards/move:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+    post:
+      tags: [boards]
+      summary: Move a Markdown document into a column; preserve identity and repair supported links
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [docId, columnId, fromPath]
+              properties:
+                docId: {type: string}
+                columnId: {type: string}
+                fromPath: {type: string, description: Expected source path; stale moves are refused}
+      responses: {"200": {description: Moved task with any link repair warnings}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/boards/reorder:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+    post:
+      tags: [boards]
+      summary: Save column ordering; stale references never hide actual tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [columnId, orderedIds]
+              properties:
+                columnId: {type: string}
+                orderedIds: {type: array, items: {type: string}}
+      responses: {"200": {description: Reordered board}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/attachments:
+    get: {tags: [attachments], summary: List attachments, parameters: [{$ref: "#/components/parameters/SpacePath"}], responses: {"200": {description: attachments}}}
+  /api/v1/spaces/{space}/attachments/move:
+    post: {tags: [attachments], summary: Move an attachment without overwriting another file, parameters: [{$ref: "#/components/parameters/SpacePath"}], requestBody: {content: {application/json: {schema: {type: object, required: [from, to], properties: {from: {type: string}, to: {type: string}}}}}}, responses: {"200": {description: moved}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/attachments/{path}:
+    delete: {tags: [attachments], summary: Move an attachment to recoverable app trash; restore through folders/restore, responses: {"200": {description: "{trashId,path,kind:attachment}"}, "4xx": {$ref: "#/components/responses/Error"}}}
+    parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/PathWild"}]
+    get: {tags: [attachments], summary: Download an attachment, responses: {"200": {description: bytes}, "4xx": {$ref: "#/components/responses/Error"}}}
+    put: {tags: [attachments], summary: Upload an attachment (octet-stream body), parameters: [{name: If-None-Match, in: header, description: "Use * to refuse overwriting an existing attachment", schema: {type: string, enum: ["*"]}}], requestBody: {content: {application/octet-stream: {schema: {type: string, format: binary}}}}, responses: {"200": {description: stored}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/search:
+    get:
+      tags: [search]
+      summary: Prefix full-text (BM25) search with metadata filters and bounded pagination
+      parameters:
+        - {$ref: "#/components/parameters/SpacePath"}
+        - {name: q, in: query, schema: {type: string, maxLength: 400}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, maximum: 1000000, default: 0}}
+        - {name: tags, in: query, schema: {type: string}, description: comma-separated tag filter}
+        - {name: folder, in: query, schema: {type: string}, description: relative folder prefix with exact folder boundaries}
+        - {name: tagMode, in: query, schema: {type: string, enum: [subtree, exact], default: subtree}}
+        - {name: path, in: query, schema: {type: string}}
+      responses: {"200": {description: "{hits: [...], limit, offset, hasMore}; use cursor-based agent/context for stable pagination"}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/graph2:
+    get:
+      tags: [graph]
+      summary: Complete lightweight graph for continuous navigation (requires graph:read)
+      parameters: [{$ref: "#/components/parameters/SpacePath"}]
+      responses: {"200": {description: all indexed note and unresolved nodes plus deduplicated explicit links; no community analysis or node sampling}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/memos:
+    get:
+      tags: [documents]
+      summary: Paginate memo-tagged documents by creation time
+      parameters:
+        - {$ref: "#/components/parameters/SpacePath"}
+        - {name: folder, in: query, schema: {type: string}, description: omitted means all folders; empty means vault root; otherwise matches descendants}
+        - {name: tag, in: query, schema: {type: string}}
+        - {name: q, in: query, schema: {type: string, maxLength: 400}, description: literal search in indexed memo content/title/path}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: inclusive creation timestamp}
+        - {name: before, in: query, schema: {type: string, format: date-time}, description: exclusive creation timestamp}
+        - {name: cursor, in: query, schema: {type: string}, description: opaque keyset cursor bound to the vault and filters}
+        - {name: limit, in: query, schema: {type: integer, default: 20, maximum: 50}}
+      responses: {"200": {description: memos with revision/tags/creation time, matched total, available tag counts and nextCursor}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/graph:
+    get: {tags: [graph], summary: Link graph, parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: limit, in: query, schema: {type: integer}}], responses: {"200": {description: nodes and edges}}}
+  /api/v1/spaces/{space}/graph/analysis:
+    get:
+      tags: [graph]
+      summary: Scoped graph analysis (requires graph:read)
+      parameters:
+        - {$ref: "#/components/parameters/SpacePath"}
+        - {name: scope, in: query, schema: {type: string, enum: [vault, folder, note, selection], default: vault}}
+        - {name: scopeId, in: query, schema: {type: array, items: {type: string}}, style: form, explode: true, description: document IDs for note or selection scope}
+        - {name: scopePath, in: query, schema: {type: string}, description: relative path for folder scope}
+        - {name: query, in: query, schema: {type: string, maxLength: 400}, description: title/path/tag search applied before the node cap}
+        - {name: direction, in: query, schema: {type: string, enum: [both, in, out], default: both}}
+        - {name: depth, in: query, schema: {type: integer, minimum: 0, maximum: 3}, description: default 0 for vault/folder and 1 for note/selection}
+        - {name: limit, in: query, schema: {type: integer, maximum: 1000}}
+      responses: {"200": {description: nodes, edges, scope, matched counts and truncation}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/tags:
+    get: {tags: [search], summary: Tag counts for the vault, parameters: [{$ref: "#/components/parameters/SpacePath"}], responses: {"200": {description: tags}}}
+  /api/v1/agent/whoami:
+    get:
+      tags: [agent]
+      summary: Capability discovery - principal, auth projection, per-vault allowed operations
+      responses: {"200": {description: AgentWhoami, content: {application/json: {schema: {$ref: "#/components/schemas/AgentWhoami"}}}}, "401": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/agent/context:
+    post:
+      tags: [agent]
+      summary: One authorized, deterministic, byte-budgeted retrieval pass
+      parameters: [{$ref: "#/components/parameters/SpacePath"}]
+      requestBody: {content: {application/json: {schema: {$ref: "#/components/schemas/AgentContextRequest"}}}}
+      responses: {"200": {description: AgentContextResponse, content: {application/json: {schema: {$ref: "#/components/schemas/AgentContextResponse"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/changes/since:
+    get:
+      tags: [agent]
+      summary: Durable per-vault change feed replay
+      parameters:
+        - {$ref: "#/components/parameters/SpacePath"}
+        - {name: cursor, in: query, schema: {type: string}, description: nextCursor from a previous call}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses: {"200": {description: AgentChanges, content: {application/json: {schema: {$ref: "#/components/schemas/AgentChanges"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/events:
+    get: {tags: [events], summary: Server-sent events stream (workspace live updates), parameters: [{$ref: "#/components/parameters/SpacePath"}], responses: {"200": {description: text/event-stream}}}
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: netsidian_session
+      description: Session cookie from /auth/login; mutations additionally need the X-Netsidian-Requested header (CSRF guard).
+    bearerKey:
+      type: http
+      scheme: bearer
+      description: 'Scoped API key (nsd keyId/secret form) from POST /me/keys; restricts the principal by scopes and vault binding.'
+  parameters:
+    SpacePath: {name: space, in: path, required: true, schema: {type: string}, description: vault (space) id}
+    DocPath: {name: doc, in: path, required: true, schema: {type: string}}
+    IdPath: {name: id, in: path, required: true, schema: {type: string}}
+    PathWild: {name: path, in: path, required: true, schema: {type: string}, description: vault-relative path (may contain slashes)}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: false, schema: {type: string}, description: makes the write replay-safe; same key and same body returns the original result, same key with different body is a 409}
+    IfMatch: {name: If-Match, in: header, required: false, schema: {type: string}, description: current revision quoted; mismatch is a precondition failure}
+  responses:
+    Error:
+      description: structured error
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          examples:
+            forbidden: {value: {error: {code: forbidden, message: "key lacks scope documents:write", retryable: false}}}
+  schemas:
+    InstanceSettings:
+      type: object
+      required: [authMode, needsSetup, signupEnabled, version, features, runtime]
+      properties:
+        authMode: {type: string, enum: [none, local, external, mixed]}
+        needsSetup: {type: boolean}
+        signupEnabled: {type: boolean}
+        version: {type: string}
+        features: {type: object, additionalProperties: {type: boolean}}
+        runtime:
+          type: object
+          required: [kind, auth, storage]
+          properties:
+            kind: {type: string, enum: [desktop, web]}
+            auth:
+              type: object
+              required: [passwordLogin, oauth, logout]
+              properties:
+                passwordLogin: {type: boolean}
+                oauth: {type: boolean}
+                logout: {type: boolean}
+            storage:
+              type: object
+              required: [defaultProvider, providers, folderPicker]
+              properties:
+                defaultProvider: {type: string}
+                providers: {type: array, items: {type: string}}
+                folderPicker: {type: string, enum: [none, native, server]}
+    VaultStorage:
+      type: object
+      additionalProperties: false
+      required: [provider, bucket, region, auth]
+      properties:
+        provider: {type: string, enum: [s3]}
+        bucket: {type: string}
+        region: {type: string}
+        endpoint: {type: string, description: Custom endpoint must be operator allowlisted}
+        prefix: {type: string}
+        pathStyle: {type: boolean}
+        auth: {type: string, enum: [keys, session, oidc]}
+        accessKey: {type: string, writeOnly: true}
+        secretKey: {type: string, writeOnly: true}
+        sessionToken: {type: string, writeOnly: true}
+        stsEndpoint: {type: string, description: Operator trusted STS origin; required for oidc}
+        roleArn: {type: string}
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: {type: string, enum: [invalid, unauthenticated, forbidden, not_found, conflict, precondition_failed, precondition_required, too_large, unavailable, rate_limited, unsupported]}
+            message: {type: string}
+            retryable: {type: boolean}
+    Role: {type: string, enum: [owner, editor, viewer]}
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, minLength: 8}
+        displayName: {type: string}
+    DocMeta:
+      type: object
+      properties:
+        id: {type: string}
+        path: {type: string}
+        kind: {type: string, enum: [note, memory, attachment]}
+        currentRevision: {type: string}
+        updatedAt: {type: string, format: date-time}
+    SaveResult:
+      type: object
+      properties:
+        revision: {type: string}
+        committedAt: {type: string, format: date-time}
+    BoardColumn:
+      type: object
+      required: [id, label, folder]
+      properties:
+        id: {type: string}
+        label: {type: string}
+        folder: {type: string}
+        completion: {type: boolean}
+        wipLimit: {type: integer, minimum: 0}
+    BoardCard:
+      type: object
+      properties:
+        id: {type: string}
+        path: {type: string}
+        title: {type: string}
+        revision: {type: string}
+        updatedAt: {type: string, format: date-time}
+    BoardColumnView:
+      type: object
+      properties:
+        id: {type: string}
+        label: {type: string}
+        folder: {type: string}
+        completion: {type: boolean}
+        wipLimit: {type: integer, minimum: 0}
+        cards: {type: array, items: {$ref: "#/components/schemas/BoardCard"}}
+    BoardConfig:
+      type: object
+      properties:
+        version: {type: integer}
+        title: {type: string}
+        columns: {type: array, items: {$ref: "#/components/schemas/BoardColumn"}}
+        order: {type: object, additionalProperties: {type: array, items: {type: string}}}
+        createDefaults: {type: object, properties: {column: {type: string}, content: {type: string}}}
+    Board:
+      type: object
+      properties:
+        path: {type: string}
+        title: {type: string}
+        revision: {type: string}
+        config: {$ref: "#/components/schemas/BoardConfig"}
+        columns: {type: array, items: {$ref: "#/components/schemas/BoardColumnView"}}
+        overflow: {type: array, items: {$ref: "#/components/schemas/BoardCard"}}
+    AgentWhoami:
+      type: object
+      properties:
+        contract: {type: string, const: netsidian-agent-v2}
+        principal: {type: object, properties: {userId: {type: string}, displayName: {type: string}}}
+        auth:
+          type: object
+          properties:
+            method: {type: string, enum: [session, api-key, local]}
+            keyId: {type: string}
+            keyLabel: {type: string}
+            scopes: {type: array, items: {type: string}}
+            bindVaults: {type: array, items: {type: string}}
+            readOnly: {type: boolean}
+        vaults:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              name: {type: string}
+              role: {$ref: "#/components/schemas/Role"}
+              allowedOperations: {type: array, items: {type: string}, description: role intersect key scopes intersect key vault binding}
+        tools: {type: array, items: {type: object, properties: {name: {type: string}, minContract: {type: string}}}}
+    AgentContextRequest:
+      type: object
+      properties:
+        query: {type: string, maxLength: 400, description: query or folder or tags required}
+        folder: {type: string, description: relative folder prefix; matches descendants with exact folder boundaries}
+        tags: {type: array, items: {type: string}}
+        graphDepth: {type: integer, default: 1, maximum: 2}
+        maxResults: {type: integer, default: 8, maximum: 20}
+        snippetChars: {type: integer, default: 240, maximum: 600}
+        kinds: {type: array, items: {type: string, enum: [note, memory]}}
+        updatedAfter: {type: string, format: date-time}
+        includeGraph: {type: boolean, default: false, description: bounded link evidence; requires graph:read}
+        maxTokens: {type: integer, description: hint only; maxBytes is the hard budget}
+        maxBytes: {type: integer, default: 8192, maximum: 131072, description: hard bound on complete encoded JSON including metadata and newline; requests too small for one result are rejected}
+        cursor: {type: string, description: nextCursor from a previous pass; bound to this vault and index generation}
+        excludeDocumentIds: {type: array, items: {type: string}}
+    AgentContextResponse:
+      type: object
+      properties:
+        contract: {type: string}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              documentId: {type: string}
+              path: {type: string}
+              title: {type: string}
+              revision: {type: string}
+              kind: {type: string}
+              excerpt: {type: string}
+              score: {type: number}
+              reasons: {type: array, items: {type: string}, description: why this document was included}
+        relationships: {type: array, items: {type: object, description: explicit-link edges between served documents}}
+        nextCursor: {type: string}
+        truncated: {type: boolean}
+        budgetUsed: {type: object, properties: {bytes: {type: integer}, estimatedTokens: {type: integer}}}
+        indexGeneration: {type: integer}
+    AgentChanges:
+      type: object
+      properties:
+        contract: {type: string}
+        changed: {type: array, items: {type: object, properties: {documentId: {type: string}, revision: {type: string}, eventType: {type: string}, at: {type: string, format: date-time}}}}
+        tombstones: {type: array, items: {type: object}}
+        nextCursor: {type: string, description: vault-bound replay cursor; preserved when no new events}

@@ -1,0 +1,112 @@
+# Default values for the Netsidian chart.
+# Target: single-node k3d (k3s v1.28.8), containerd, NO container registry.
+# Image is loaded into the cluster with `k3d image import netsidian:local -c "<cluster-name>"`.
+
+# ---------------------------------------------------------------------------
+# Image
+# ---------------------------------------------------------------------------
+# The cluster has no registry, so the image is imported locally into k3d.
+# imagePullPolicy MUST be IfNotPresent so containerd uses the imported image
+# instead of attempting a registry pull that would fail.
+image:
+  repository: netsidian
+  tag: local
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Application runtime contract
+# ---------------------------------------------------------------------------
+# Same server binary and NETSIDIAN_* configuration as Docker/Compose.
+# Kubernetes exposes a network service, so auth=none is prohibited.
+containerPort: 3000
+auth:
+  mode: local # local | external | mixed
+storage:
+  driver: local # local | s3
+# First administrator setup works with signup disabled. General registration
+# is an independent, explicit operator choice.
+signupEnabled: "false"
+# Additional non-secret NETSIDIAN_* settings, such as OIDC issuer, claims,
+# public URL, S3 bucket/region and trusted endpoint allowlists.
+env: {}
+# Existing Secret containing OIDC client secrets / AWS credentials. Secrets
+# remain outside Helm values and rendered manifests. Explicit runtime env
+# below takes precedence over envFrom keys.
+existingSecret: ""
+
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+# ClusterIP exposing port 80 -> targetPort 3000 (container). Port-forward
+# example uses 80; the app itself listens on 3000 inside the pod.
+service:
+  type: ClusterIP
+  port: 80
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+# ONE ReadWriteOnce PVC holds the whole state dir: database/ secrets/ journal/
+# history/ content/. SQLite MUST NOT be shared across replicas, hence replicas=1.
+# No subPath; the volume mounts at the full state dir path /netsidian-state.
+persistence:
+  # Name of the volumeClaimTemplate / resulting PVC volume.
+  size: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  # StorageClass name. Default local-path (rancher) on k3d.
+  # Set to "" to fall back to the cluster default StorageClass.
+  # WARNING: local-path ReclaimPolicy=Delete destroys data on PVC deletion.
+  storageClassName: local-path
+  mountPath: /netsidian-state
+
+# StatefulSet controls
+replicaCount: 1
+
+# ---------------------------------------------------------------------------
+# Resources (small single-user defaults)
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Pod / container security context
+# ---------------------------------------------------------------------------
+# fsGroup=65532 is REQUIRED so the provisioned local-path volume is
+# group-writable by the app's uid/gid (image chown does not cover volumes).
+# readOnlyRootFilesystem is intentionally omitted (not asserted by the app).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+
+# ---------------------------------------------------------------------------
+# Ingress (OPTIONAL; ingress-nginx, IngressClass "nginx")
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  host: netsidian.local
+  path: /
+  pathType: Prefix
+  annotations: {}
+  tls: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

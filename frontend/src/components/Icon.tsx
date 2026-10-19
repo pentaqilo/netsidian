@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 const paths: Record<string,string> = {
+ mindmap:'M9 9h6v6H9z M3 2h5v4H3z M16 2h5v4h-5z M3 18h5v4H3z M16 18h5v4h-5z M5.5 6v6H9 M18.5 6v6H15 M5.5 18v-6 M18.5 18v-6',
  palette:'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-4-4-6-9-6 M7 8h.01 M12 6h.01 M17 8h.01 M6 13h.01',
  info:'M12 11v6 M12 7h.01 M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
  user:'M20 21v-2a7 7 0 0 0-14 0v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8',

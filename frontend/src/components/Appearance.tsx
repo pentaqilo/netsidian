@@ -54,8 +54,9 @@ export function useAppearance(user:string){
   const pal=paletteDefaults[dark?'dark':'light'];
   const md=(attr:string,varName:string,v:string,d:string)=>{document.documentElement.style.setProperty(varName,isHex(v)?v:d);document.documentElement.setAttribute(attr,'')};
   md('data-ws-hcolor','--ws-hcolor',t.hColor,pal.hColor);md('data-ws-linkcolor','--ws-linkcolor',t.linkColor,pal.linkColor);md('data-ws-quotecolor','--ws-quotecolor',t.quoteColor,pal.quoteColor);md('data-ws-codecolor','--ws-codecolor',t.codeColor,pal.codeColor);
-  // Memos use their own accent, independent of the document accent.
-  const memo=resolveMemoAccent(dark?'dark':'light',t.memoColor);document.documentElement.style.setProperty('--memo-accent',memo.accent);document.documentElement.style.setProperty('--memo-accent-text',memo.text);
+  // Memos inherit the app accent for the scheme on screen; an explicit memo
+  // color pick overrides it, and Reset returns to inheriting.
+  const memo=resolveMemoAccent(dark?'dark':'light',t.memoColor,accent);document.documentElement.style.setProperty('--memo-accent',memo.accent);document.documentElement.style.setProperty('--memo-accent-text',memo.text);
  };apply();media.addEventListener('change',apply);return()=>media.removeEventListener('change',apply)},[appearance]);
  const update=(patch:Partial<Appearance>)=>{edits.current++;const next={...appearance,...patch};setAppearance(next);try{localStorage.setItem(cacheKey,JSON.stringify(next));localStorage.setItem(pendingKey,JSON.stringify(next))}catch{}queue(next)};
  return {appearance,update,loaded};
@@ -65,7 +66,7 @@ export function AppearancePanel({value,onChange}:{value:Appearance;onChange:(v:P
  const [scheme,setScheme]=useState<'dark'|'light'>(()=>document.documentElement.dataset.theme==='light'?'light':'dark');
  const t=value[scheme];const [hex,setHex]=useState(t.accent);useEffect(()=>setHex(t.accent),[t.accent]);
  const patch=(p:Partial<ThemeColors>)=>onChange({[scheme]:{...t,...p}} as unknown as Partial<Appearance>);
-  const md=(lbl:string,key:'hColor'|'linkColor'|'quoteColor'|'codeColor'|'memoColor')=><MarkdownColor key={key} label={lbl} value={t[key]} fallback={paletteDefaults[scheme][key]} onChange={color=>patch({[key]:color} as Partial<ThemeColors>)}/>;
+  const md=(lbl:string,key:'hColor'|'linkColor'|'quoteColor'|'codeColor'|'memoColor',fallback=paletteDefaults[scheme][key])=><MarkdownColor key={key} label={lbl} value={t[key]} fallback={fallback} onChange={color=>patch({[key]:color} as Partial<ThemeColors>)}/>;
  return <div className="appearance-panel"><h3>Appearance</h3><label>Theme<select aria-label="Theme" value={value.theme} onChange={e=>onChange({theme:e.target.value as Appearance['theme']})}><option value="dark">Dark</option><option value="light">Light</option><option value="system">Use system setting</option></select></label>
  <div className="scheme-tabs" role="group" aria-label="Color scheme to edit">
   <button aria-pressed={scheme==='dark'} className={scheme==='dark'?'active':''} onClick={()=>setScheme('dark')}><Icon name="moon" size={13}/> Dark colors</button>
@@ -82,9 +83,9 @@ export function AppearancePanel({value,onChange}:{value:Appearance;onChange:(v:P
  <label>Label main navigation<input type="checkbox" checked={value.navLabels} onChange={e=>onChange({navLabels:e.target.checked})}/></label><label>Reopen tabs on startup<input aria-label="Reopen tabs on startup" type="checkbox" checked={value.restoreTabs} onChange={e=>onChange({restoreTabs:e.target.checked})}/></label><p className="muted">Remembers open documents, pinned tabs, Graph and Memos per vault. Closing every tab leaves the next session empty. Turn off to start with no tabs.</p><h4>Markdown colors</h4>
   {md('Headings','hColor')}{md('Links','linkColor')}{md('Quotes','quoteColor')}{md('Code','codeColor')}
   <p className="muted">Recolor headings, links, quotes and code in the reader and the visual editor — for this mode only. Defaults adapt to the scheme (dark schemes get lighter hues, light schemes deep ones, links blue); Reset returns each to that default.</p>
-  <h4>Memos</h4>
-  {md('Memos','memoColor')}
-  <p className="muted">Give the Memos timeline its own accent, independent of the document accent. It defaults to the built-in green for this mode; the on-accent text adapts for readability. Reset returns to that default.</p></div>;
+   <h4>Memos</h4>
+   {md('Memos','memoColor',resolveAccent(scheme,t.accent,t.preset))}
+   <p className="muted">The Memos accent follows the app accent for this mode by default. Pick a color to give Memos their own; the on-accent text adapts for readability. Reset returns to the app accent.</p></div>;
 }
 function MarkdownColor({label,value,fallback,onChange}:{label:string;value:string;fallback:string;onChange:(color:string)=>void}){
  const color=isHex(value)?value:fallback;

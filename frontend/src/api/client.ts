@@ -348,3 +348,23 @@ export const trashAttachment = (space:string,path:string) =>
  request<{trashId:string;path:string;kind:"attachment"}>("DELETE",`/spaces/${space}/attachments/${path.split('/').map(encodeURIComponent).join('/')}`);
 export const moveAttachment = (space:string,from:string,to:string) =>
  request<{ok:boolean}>("POST",`/spaces/${space}/attachments/move`,{body:{from,to}});
+
+// ---- folder-backed mind maps ----
+export interface MindMapNodeConfig {id:string;x:number;y:number;w?:number;h?:number;color?:string}
+export interface MindMapEdgeConfig {id:string;from:string;to:string;label?:string;dashed?:boolean;fromSide?:'top'|'right'|'bottom'|'left';toSide?:'top'|'right'|'bottom'|'left'}
+export interface MindMapConfig {version:number;title?:string;nodes:MindMapNodeConfig[];edges:MindMapEdgeConfig[]}
+export interface MindMapNodeView extends MindMapNodeConfig {title:string;path?:string;revision?:string;owned:boolean;missing?:boolean;updatedAt?:string;warnings?:string[]}
+export interface MindMapEdgeView {id:string;from:string;to:string;label?:string;dashed?:boolean;missing?:boolean}
+export interface MindMap {path:string;title:string;revision:string;config:MindMapConfig;nodes:MindMapNodeView[];edges:MindMapEdgeView[];warnings?:string[]}
+export interface MindMapSummary {path:string;title:string;nodes:number;edges:number}
+export const listMindMaps=async(space:string)=>{const data=await request<{mindMaps:MindMapSummary[]|null}>('GET',`/spaces/${encodeURIComponent(space)}/mindmaps`);return {mindMaps:normList(data.mindMaps)}};
+export const getMindMap=(space:string,path:string)=>request<MindMap>('GET',`/spaces/${encodeURIComponent(space)}/mindmaps/mindmap`,{query:{path}});
+export const createMindMap=(space:string,body:{path:string;title:string},idempotencyKey?:string)=>request<MindMap>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps`,{body,idempotencyKey});
+export const updateMindMapConfig=(space:string,path:string,body:{title?:string;nodes?:MindMapNodeConfig[];edges?:MindMapEdgeConfig[]},ifMatch:string)=>request<MindMap>('PUT',`/spaces/${encodeURIComponent(space)}/mindmaps/config`,{query:{path},body,ifMatch});
+export const createMindMapNode=(space:string,path:string,body:{title:string;x:number;y:number},idempotencyKey?:string)=>request<MindMap>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes`,{query:{path},body,idempotencyKey});
+export const addMindMapReference=(space:string,path:string,body:{docId:string;x:number;y:number})=>request<MindMap>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes/reference`,{query:{path},body});
+export const moveDocIntoMindMap=(space:string,path:string,body:{docId:string;fromPath:string},ifMatch:string)=>request<{mindMap:MindMap;warnings?:string[]}>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes/move`,{query:{path},body,ifMatch});
+export const moveFileIntoMindMapNode=(space:string,path:string,body:{nodeId:string;docId:string;fromPath:string},ifMatch:string)=>request<{mindMap:MindMap;warnings?:string[]}>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes/files`,{query:{path},body,ifMatch});
+export const deleteMindMapNode=(space:string,path:string,body:{nodeId:string;trash:boolean},ifMatch:string)=>request<MindMap>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes/delete`,{query:{path},body,ifMatch});
+
+export const linkFileToMindMapNode=(space:string,path:string,body:{nodeId:string;docId?:string;attachmentPath?:string},ifMatch:string)=>request<MindMap>('POST',`/spaces/${encodeURIComponent(space)}/mindmaps/nodes/links`,{query:{path},body,ifMatch});

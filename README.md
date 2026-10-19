@@ -29,6 +29,14 @@ Netsidian runs on hardware you control. Your notes stay plain `.md` files in a n
 - **Verified backup & restore** — `netsidian backup` / `netsidian restore`: storage-aware archives covering state, managed content, attached folders and S3 vaults, with checksums and post-restore verification; [guide](docs/backup.md)
 - **Mobile-friendly** responsive workspace
 
+## Mind maps
+
+Create folder-backed canvases of Markdown ideas, branch and connect documents,
+resize cards to reveal rendered Markdown, and edit in a resizable side preview.
+Drag connectors between borders or onto empty canvas to add a new idea.
+Drop files onto cards or empty canvas to link them without moving originals.
+See [Mind maps](docs/mindmaps.md) for controls, persistence and initial limits.
+
 
 ## Quick start
 
@@ -126,6 +134,7 @@ Full reference with data locations and security notes: **[docs/configuration.md]
 | [Development](docs/development.md) | Build, test, repo tour, code conventions |
 | [Troubleshooting](docs/troubleshooting.md) | Common failures and fixes |
 | [Architecture](docs/architecture.md) | Hexagonal core, transports, invariants |
+| [Mind maps](docs/mindmaps.md) | Canvas controls, file links, resizable cards and initial limits |
 | [Data model](docs/data-model.md) | Vaults, documents, revisions, links, storage |
 | [Authentication](docs/authentication.md) | Modes, sessions, CSRF, API keys, OIDC |
 | [API reference](docs/api.md) | Full REST + agent interface, schemas, examples |
@@ -138,14 +147,14 @@ Full reference with data locations and security notes: **[docs/configuration.md]
 
 Download Windows, Linux, and macOS desktop archives from [GitHub Releases](https://github.com/pentaqilo/netsidian/releases). Linux requires GTK4 and WebKitGTK 6.0; Windows requires WebView2. macOS bundles are ad-hoc signed, not notarized.
 
-The Docker image is `ghcr.io/pentaqilo/netsidian:0.1.0` (Linux amd64/arm64). Release downloads include the packaged [Helm chart](helm/README.md), SHA-256 checksums and the immutable container digest.
+The Docker image is `ghcr.io/pentaqilo/netsidian:0.2.0` (Linux amd64/arm64). Release downloads include the packaged [Helm chart](helm/README.md), SHA-256 checksums and the immutable container digest.
 
 ```sh
 docker run -d --name netsidian -p 127.0.0.1:3000:3000 \
-  -v netsidian-state:/netsidian-state ghcr.io/pentaqilo/netsidian:0.1.0
+  -v netsidian-state:/netsidian-state ghcr.io/pentaqilo/netsidian:0.2.0
 ```
 
-Release automation runs on version tags such as `0.1.0`. It publishes the GitHub release after all desktop builds, backend tests, Helm chart validation, and container publication succeed.
+Release automation runs on version tags such as `0.2.0`. It publishes the GitHub release after all desktop builds, backend tests, Helm chart validation, and container publication succeed.
 
 # Gallery
 
@@ -164,6 +173,10 @@ Release automation runs on version tags such as `0.1.0`. It publishes the GitHub
 ### Kanban boards with task previews
 
 ![Kanban board with task columns and an editable, resizable task preview](docs/screenshots/kanban.png)
+
+### Mind maps with resizable Markdown cards
+
+![Mind map with rendered Markdown cards, linked files and border connectors](docs/screenshots/mindmap.png)
 
 ### PDF document tabs with Markdown conversion
 

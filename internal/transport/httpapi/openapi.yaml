@@ -19,6 +19,7 @@ tags:
   - {name: documents}
   - {name: folders}
   - {name: boards}
+  - {name: mindmaps}
   - {name: attachments}
   - {name: search}
   - {name: graph}
@@ -412,6 +413,141 @@ paths:
                 columnId: {type: string}
                 orderedIds: {type: array, items: {type: string}}
       responses: {"200": {description: Reordered board}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps:
+    get:
+      tags: [mindmaps]
+      summary: List folder-backed mind maps
+      parameters: [{$ref: "#/components/parameters/SpacePath"}]
+      responses: {"200": {description: "{mindMaps:[{path,title,nodes,edges}]}"}, "4xx": {$ref: "#/components/responses/Error"}}
+    post:
+      tags: [mindmaps]
+      summary: Create a mind map folder with a blank canvas
+      parameters: [{$ref: "#/components/parameters/SpacePath"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: {type: string}
+                title: {type: string}
+      responses: {"201": {description: Created mind map}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/mindmap:
+    get:
+      tags: [mindmaps]
+      summary: Read a mind map canvas with nodes resolved against documents
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}]
+      responses: {"200": {description: Mind map view with ETag}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/config:
+    put:
+      tags: [mindmaps]
+      summary: Save canvas configuration (nodes, connectors, title)
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: {type: string}
+                nodes: {type: array, items: {type: object, required: [id, x, y], properties: {id: {type: string}, x: {type: number}, y: {type: number}, w: {type: number}, h: {type: number}, color: {type: string}}}}
+                edges: {type: array, items: {type: object, required: [id, from, to], properties: {id: {type: string}, from: {type: string}, to: {type: string}, label: {type: string}, dashed: {type: boolean}}}}
+      responses: {"200": {description: Updated mind map}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes:
+    post:
+      tags: [mindmaps]
+      summary: Create a new owned document node on the canvas
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, x, y]
+              properties:
+                title: {type: string}
+                x: {type: number}
+                y: {type: number}
+      responses: {"201": {description: Mind map with new node}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes/reference:
+    post:
+      tags: [mindmaps]
+      summary: Place an existing vault document on the canvas without moving it
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [docId, x, y]
+              properties:
+                docId: {type: string}
+                x: {type: number}
+                y: {type: number}
+      responses: {"201": {description: Mind map with reference node}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes/move:
+    post:
+      tags: [mindmaps]
+      summary: Move an existing document into the map folder and place it on the canvas
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [docId]
+              properties:
+                docId: {type: string}
+                fromPath: {type: string}
+      responses: {"200": {description: "{mindMap,warnings}"}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes/links:
+    post:
+      tags: [mindmaps]
+      summary: Link a vault document or attachment in a node without moving it; If-Match is the node revision
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeId]
+              properties:
+                nodeId: {type: string}
+                docId: {type: string}
+                attachmentPath: {type: string}
+      responses: {"200": {description: Updated mind map}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes/files:
+    post:
+      tags: [mindmaps]
+      summary: Move a Markdown file into a node folder, preserving links and identity
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeId, docId, fromPath]
+              properties:
+                nodeId: {type: string}
+                docId: {type: string}
+                fromPath: {type: string}
+      responses: {"200": {description: "{mindMap,warnings}"}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/mindmaps/nodes/delete:
+    post:
+      tags: [mindmaps]
+      summary: Remove a node from the canvas; optionally trash owned documents
+      parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}, {$ref: "#/components/parameters/IfMatch"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeId]
+              properties:
+                nodeId: {type: string}
+                trash: {type: boolean}
+      responses: {"200": {description: Updated mind map}, "4xx": {$ref: "#/components/responses/Error"}}
   /api/v1/spaces/{space}/attachments:
     get: {tags: [attachments], summary: List attachments, parameters: [{$ref: "#/components/parameters/SpacePath"}], responses: {"200": {description: attachments}}}
   /api/v1/spaces/{space}/attachments/move:

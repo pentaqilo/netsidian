@@ -1,13 +1,13 @@
-export type WorkspaceTab={id:string;path:string;space:string;pinned?:boolean;transient?:boolean;att?:string;board?:string};
-export type WorkspaceTool={space:string;page:'memos'|'graph2'|'boards'};
-export type WorkspaceSession={version:2;tabs:WorkspaceTab[];toolTabs:WorkspaceTool[];activeDoc:string;activePage:'document'|'memos'|'graph2'|'boards'};
+export type WorkspaceTab={id:string;path:string;space:string;pinned?:boolean;transient?:boolean;att?:string;board?:string;map?:string};
+export type WorkspaceTool={space:string;page:'memos'|'graph2'|'boards'|'maps'};
+export type WorkspaceSession={version:2;tabs:WorkspaceTab[];toolTabs:WorkspaceTool[];activeDoc:string;activePage:'document'|'memos'|'graph2'|'boards'|'maps'};
 export const sessionKey=(user:string,space:string)=>`netsidian:ws:${user}:${space}`;
 export function readSession(value:unknown,space:string):WorkspaceSession|null{
  if(!value||typeof value!=='object')return null;const v=value as Partial<WorkspaceSession>;
  if(v.version!==2||!Array.isArray(v.tabs))return null;
-  const seen=new Set<string>(),tabs=v.tabs.filter(t=>t&&typeof t.id==='string'&&t.space===space&&!t.transient&&!seen.has(t.id)&&!!seen.add(t.id)).map(t=>({id:t.id,space,path:typeof t.path==='string'?t.path:'Loading…',pinned:t.pinned===true,att:typeof (t as {att?:unknown}).att==='string'?(t as {att:string}).att:undefined,board:typeof (t as {board?:unknown}).board==='string'?(t as {board:string}).board:undefined}));
- const tools=new Set<string>(),toolTabs=(Array.isArray(v.toolTabs)?v.toolTabs:[]).filter(t=>t&&t.space===space&&(t.page==='graph2'||t.page==='memos'||t.page==='boards')&&!tools.has(t.page)&&!!tools.add(t.page));
- const activePage=v.activePage==='graph2'||v.activePage==='memos'||v.activePage==='boards'?v.activePage:'document';
+  const seen=new Set<string>(),tabs=v.tabs.filter(t=>t&&typeof t.id==='string'&&t.space===space&&!t.transient&&!seen.has(t.id)&&!!seen.add(t.id)).map(t=>({id:t.id,space,path:typeof t.path==='string'?t.path:'Loading…',pinned:t.pinned===true,att:typeof (t as {att?:unknown}).att==='string'?(t as {att:string}).att:undefined,map:typeof t.map==='string'?t.map:undefined,board:typeof (t as {board?:unknown}).board==='string'?(t as {board:string}).board:undefined}));
+ const tools=new Set<string>(),toolTabs=(Array.isArray(v.toolTabs)?v.toolTabs:[]).filter(t=>t&&t.space===space&&(t.page==='graph2'||t.page==='memos'||t.page==='boards'||t.page==='maps')&&!tools.has(t.page)&&!!tools.add(t.page));
+ const activePage=v.activePage==='graph2'||v.activePage==='memos'||v.activePage==='boards'||v.activePage==='maps'?v.activePage:'document';
  return{version:2,tabs,toolTabs,activeDoc:tabs.some(t=>t.id===v.activeDoc)?v.activeDoc||'':'',activePage:activePage==='document'||toolTabs.some(t=>t.page===activePage)?activePage:'document'};
 }
 const finite=(n:unknown,fallback:number)=>typeof n==='number'&&Number.isFinite(n)?n:fallback;

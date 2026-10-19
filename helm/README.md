@@ -13,7 +13,7 @@ GitHub Actions lints and renders the chart, then adds `netsidian-<version>.tgz` 
 Download the chart and install it, using your cluster's default StorageClass:
 
 ```bash
-helm install netsidian ./netsidian-0.1.0.tgz \
+helm install netsidian ./netsidian-0.2.0.tgz \
   --namespace netsidian --create-namespace \
   --set persistence.storageClassName=""
 ```

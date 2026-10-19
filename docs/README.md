@@ -24,6 +24,7 @@ as plain `.md` files.
 | What is stored and how it relates (vaults, documents, revisions, links, storage) | [data-model.md](data-model.md) |
 | Auth modes, sessions, CSRF, API keys, OIDC | [authentication.md](authentication.md) |
 | Back up & restore a whole instance (storage-aware, verified) | [backup.md](backup.md) |
+| Document-backed mind maps, branching and linked files | [mindmaps.md](mindmaps.md) |
 | PDF tabs, conversion, file drops and recoverable trash | [file-workflows.md](file-workflows.md) |
 | **The full HTTP API** (REST + agent interface) | [api.md](api.md) |
 | Using Netsidian from an agent (PATs, memory-as-Markdown, workflow) | [agents.md](agents.md) |

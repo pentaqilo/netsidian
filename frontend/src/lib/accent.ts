@@ -62,16 +62,21 @@ function readableAgainst(base: string, theme: Theme): string {
   return theme === 'dark' ? '#ffffff' : '#000000';
 }
 
-// Memos have their own accent, independent of the document accent. Built-in hues
-// are the historical greens; a user pick wins and Reset returns to these.
+// Fallback only: used when neither an explicit memo color nor an app accent is
+// available (e.g. before preferences load). The normal default inherits the app
+// accent; an explicit user-picked memo color always wins over it.
 export const MEMO_DEFAULT: Record<Theme, string> = { dark: '#a6c6ab', light: '#41714e' };
 
 // The memo accent is used both as foreground text (on the page background) and as
-// a fill (buttons/badges). Gate it for readability against the page background,
-// then pick the on-accent text color for contrast against the accent itself.
-export function resolveMemoAccent(theme: Theme, color: string): { accent: string; text: string } {
-  const base = isHex(color) ? color : MEMO_DEFAULT[theme];
-  const accent = readableAgainst(base, theme);
+// a fill (buttons/badges). An explicit memo color wins; otherwise the accent
+// follows the app accent (appAccent), falling back to MEMO_DEFAULT. Gate the
+// custom result for readability against the page background. Inherited app
+// colors stay identical; button text adapts for contrast against the accent.
+export function resolveMemoAccent(theme: Theme, color: string, appAccent = ''): { accent: string; text: string } {
+  const base = isHex(color) ? color : isHex(appAccent) ? appAccent : MEMO_DEFAULT[theme];
+  // Inheritance means the exact app accent; custom memo colors still use the
+  // readability gate. Reprocessing the app accent would make defaults diverge.
+  const accent = !isHex(color) && isHex(appAccent) ? appAccent : readableAgainst(base, theme);
   const text = contrastRatio(accent, '#ffffff') >= contrastRatio(accent, '#111111') ? '#ffffff' : '#111111';
   return { accent, text };
 }

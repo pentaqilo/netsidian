@@ -35,3 +35,11 @@ it('trashing a folder closes its board tabs and descendants only',()=>{
  const tabs=[board('one','boards/project'),board('two','boards/project'),board('one','boards2/project'),pdf('one','boards/notes.md')];
  expect(removePathTabs(tabs,'one','boards')).toEqual([tabs[1],tabs[2]]);
 });
+it('keeps mind map tabs coherent across folder moves and vault isolation',async()=>{
+ const {mapTabId,moveMapTabs}=await import('./workspaceTabs');
+ const map=(space:string):WorkspaceTab=>({id:mapTabId('Maps/Plan'),space,path:'Maps/Plan',map:'Maps/Plan',pinned:true});
+ const moved=moveMapTabs([map('one'),map('two')],'one','Maps','Research');
+ expect(moved[0]).toEqual({...map('one'),id:mapTabId('Research/Plan'),path:'Research/Plan',map:'Research/Plan'});
+ expect(workspaceTabURL(moved[0])).toBe('/s/one/m/Research%2FPlan');expect(moved[1]).toEqual(map('two'));
+ expect(removePathTabs(moved,'one','Research')).toEqual([map('two')]);
+});

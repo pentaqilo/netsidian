@@ -42,11 +42,24 @@ describe('accent tokens (P3-A01)', () => {
   });
 });
 
-describe('memo accent (independent of document accent)', () => {
-  it('falls back to the built-in green when no color is set', () => {
+describe('memo accent (inherits the app accent by default)', () => {
+  it('inherits the app accent when no explicit memo color is set', () => {
+    expect(resolveMemoAccent('dark', '', '#0561f5').accent).toBe('#0561f5');
+    expect(resolveMemoAccent('light', '', '#6840bd').accent).toBe('#6840bd');
+  });
+  it('keeps inherited colors identical to the app and picks readable button text', () => {
+    const light = resolveMemoAccent('light', '', '#f0f0f0');
+    expect(light.accent).toBe('#f0f0f0');
+    expect(contrastRatio(light.accent, light.text)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+  });
+  it('keeps an explicit custom memo color over the app accent', () => {
+    expect(resolveMemoAccent('dark', '#8ec07c', '#0561f5').accent).toBe('#8ec07c');
+    expect(resolveMemoAccent('light', '#41714e', '#0561f5').accent).toBe('#41714e');
+  });
+  it('falls back to the built-in green only when there is no app accent either', () => {
     expect(resolveMemoAccent('dark', '').accent).toBe(MEMO_DEFAULT.dark);
     expect(resolveMemoAccent('light', '').accent).toBe(MEMO_DEFAULT.light);
-    expect(resolveMemoAccent('dark', 'notahex').accent).toBe(MEMO_DEFAULT.dark);
+    expect(resolveMemoAccent('dark', 'notahex', 'notahex').accent).toBe(MEMO_DEFAULT.dark);
   });
   it('gates a custom color for readability against the page background', () => {
     const dark = resolveMemoAccent('dark', '#ff0000');

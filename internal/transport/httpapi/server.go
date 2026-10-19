@@ -161,6 +161,18 @@ func (s *Server) Handler() http.Handler {
 	doc("POST /api/v1/spaces/{space}/boards/move", s.wrap(s.handleBoardTaskMove, false))
 	doc("POST /api/v1/spaces/{space}/boards/reorder", s.wrap(s.handleBoardReorder, false))
 
+	// folder-backed mind maps
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes/links", s.wrap(s.handleMindMapNodeLink, false))
+	doc("GET /api/v1/spaces/{space}/mindmaps", s.wrap(s.handleMindMapsList, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps", s.wrap(s.handleMindMapCreate, false))
+	doc("GET /api/v1/spaces/{space}/mindmaps/mindmap", s.wrap(s.handleMindMapGet, false))
+	doc("PUT /api/v1/spaces/{space}/mindmaps/config", s.wrap(s.handleMindMapConfig, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes", s.wrap(s.handleMindMapNodeCreate, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes/reference", s.wrap(s.handleMindMapNodeReference, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes/move", s.wrap(s.handleMindMapNodeMove, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes/delete", s.wrap(s.handleMindMapNodeDelete, false))
+	doc("POST /api/v1/spaces/{space}/mindmaps/nodes/files", s.wrap(s.handleMindMapNodeFiles, false))
+
 	doc("GET /api/v1/spaces/{space}/search", s.wrap(s.handleSearch, false))
 	doc("GET /api/v1/spaces/{space}/graph2", s.wrap(s.handleGraph2, false))
 	doc("GET /api/v1/spaces/{space}/memos", s.wrap(s.handleMemos, false))

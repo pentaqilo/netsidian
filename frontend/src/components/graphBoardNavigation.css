@@ -1,0 +1,41 @@
+/* Shared placement + page-specific anchoring for the CanvasNavigation controls
+   used by the Graph and Kanban views. The component itself (CanvasNavigation.css)
+   draws the bar and minimap; this file only positions it inside each surface and
+   scales the Kanban columns for the board zoom. */
+
+/* ---- Graph: keep the floating navigation clear of the preview/settings panels,
+   mirroring the placement the previous .g2-navigation bar relied on. ---- */
+@media(min-width:641px){
+  .graph2:not(.graph2-local) .g2-body:has(.g2-inspector) .canvas-navigation{right:calc(var(--preview-width,30%) + 20px)}
+  .graph2:not(.graph2-local) .g2-body:has(.g2-settings) .canvas-navigation{right:354px}
+}
+@media(min-width:1100px){
+  .graph2:not(.graph2-local) .g2-body:has(.g2-settings):has(.g2-inspector) .canvas-navigation{right:calc(var(--preview-width,30%) + 354px)}
+}
+@media(max-width:640px){
+  .graph2 .canvas-navigation{bottom:10px}
+  .g2-body:has(.g2-inspector) .canvas-navigation{bottom:calc(var(--preview-height,38%) + 8px)}
+  .graph2:not(.graph2-local) .g2-body:has(.g2-inspector) .canvas-navigation{bottom:calc(var(--preview-height,38%) + 18px)}
+}
+
+/* ---- Kanban: anchor the navigation to the board surface so it stays fixed
+   beside the task preview, and drive the column zoom from --board-zoom. ---- */
+.board-view .board-surface{position:relative}
+.board-view .board-columns{position:relative;--board-zoom:1;gap:calc(12px * var(--board-zoom,1))}
+.board-view .board-columns .board-cards{gap:calc(6px * var(--board-zoom,1))}
+.board-view .board-columns .board-card-title{font-size:max(11px,calc(13px * var(--board-zoom,1)))}
+.board-view .board-columns .board-card-path{font-size:max(10px,calc(11px * var(--board-zoom,1)))}
+/* Column width only scales on wide layouts; narrow screens stack columns full
+   width and the font scaling above still provides a vertical zoom. */
+@media(min-width:701px){
+  .board-view .board-columns .board-column{flex-basis:calc(280px * var(--board-zoom,1));max-width:calc(320px * var(--board-zoom,1))}
+}
+
+/* Native scroll plus canvas-style hand navigation; task dragging is unchanged
+   outside the explicit tool. The preview and controls are separate surfaces. */
+.board-view .board-columns{cursor:grab}
+.board-view .board-columns .board-card{cursor:pointer}
+.board-view .board-columns.board-hand{touch-action:none}
+.board-view .board-columns.board-hand .board-card{cursor:grab;user-select:none}
+.board-view .board-columns.board-panning,.board-view .board-columns.board-panning .board-card{cursor:grabbing;user-select:none}
+.board-view .board-columns:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}

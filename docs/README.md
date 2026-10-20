@@ -25,6 +25,7 @@ as plain `.md` files.
 | Auth modes, sessions, CSRF, API keys, OIDC | [authentication.md](authentication.md) |
 | Back up & restore a whole instance (storage-aware, verified) | [backup.md](backup.md) |
 | Document-backed mind maps, branching and linked files | [mindmaps.md](mindmaps.md) |
+| Shared zoom controls and minimap navigation | [canvas-navigation.md](canvas-navigation.md) |
 | PDF tabs, conversion, file drops and recoverable trash | [file-workflows.md](file-workflows.md) |
 | **The full HTTP API** (REST + agent interface) | [api.md](api.md) |
 | Using Netsidian from an agent (PATs, memory-as-Markdown, workflow) | [agents.md](agents.md) |
@@ -50,3 +51,6 @@ the place to record structural decisions.
 *Your notes are just files — Netsidian only ever adds folders it clearly owns.*
 
 - [Folder-backed Kanban boards](kanban.md) — file layout, metadata, permissions and move semantics.
+
+- [Interaction preferences](interaction-preferences.md): document defaults, editing gestures, memo composer and minimaps.
+- [Implementation state](roadmap-state.md): implemented work, validation and MCP design backlog.

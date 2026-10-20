@@ -2,7 +2,7 @@ apiVersion: v2
 name: netsidian
 description: Netsidian personal notes server (Go, SQLite, distroless nonroot image) for single-node k3d/k3s clusters
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "local"
 keywords:
   - notes

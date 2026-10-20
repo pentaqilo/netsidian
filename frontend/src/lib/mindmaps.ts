@@ -157,6 +157,108 @@ export function curvePath(a:{x:number;y:number;side?:NodeSide},b:{x:number;y:num
   return `M ${a.x} ${a.y} C ${a.x+n.x*distance} ${a.y+n.y*distance}, ${b.x+m.x*distance} ${b.y+m.y*distance}, ${b.x} ${b.y}`;
 }
 
+// ---- edge auto-pan while dragging ----
+// Follows the established diagram-editor pattern (React Flow's calcAutoPan:
+// a small inner edge zone whose velocity ramps with proximity, applied every
+// animation frame while the gesture holds). Unlike React Flow's fixed
+// per-frame step, speed here is px/second multiplied by elapsed time, so the
+// pan feels identical at any refresh rate, and it starts at exactly zero at
+// the zone boundary so there is no jump when activation begins.
+
+export interface CanvasBounds { left: number; top: number; right: number; bottom: number }
+
+// Activation band width inside the visible canvas edge, in client pixels.
+export const AUTO_PAN_MARGIN = 48;
+// Cap in client pixels per second at the very edge of the canvas.
+export const AUTO_PAN_MAX_SPEED = 650;
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+// Velocity in client px/second. 0 outside the band, ramping linearly to
+// ±maxSpeed at (and beyond) the edge; both axes are independent, so corners
+// pan diagonally. Returns {x:0,y:0} when the pointer is inside the neutral
+// middle.
+export function edgeAutoPanVelocity(
+  pointer: { x: number; y: number },
+  bounds: CanvasBounds,
+  margin = AUTO_PAN_MARGIN,
+  maxSpeed = AUTO_PAN_MAX_SPEED,
+): { x: number; y: number } {
+  if (!(margin > 0) || !(maxSpeed > 0) || bounds.right <= bounds.left || bounds.bottom <= bounds.top) return { x: 0, y: 0 };
+  let x = 0, y = 0;
+  if (pointer.x < bounds.left + margin) x = -clamp01((bounds.left + margin - pointer.x) / margin);
+  else if (pointer.x > bounds.right - margin) x = clamp01((pointer.x - (bounds.right - margin)) / margin);
+  if (pointer.y < bounds.top + margin) y = -clamp01((bounds.top + margin - pointer.y) / margin);
+  else if (pointer.y > bounds.bottom - margin) y = clamp01((pointer.y - (bounds.bottom - margin)) / margin);
+  return { x: x * maxSpeed, y: y * maxSpeed };
+}
+
+// The activation bounds for one pointer position: the visible canvas rect
+// shrunk where floating overlays (navigation, inspector, minimap popover, the
+// document preview on narrow layouts) reach into the edge band the pointer is
+// next to. Returns null when the pointer is over an overlay itself — the
+// board is not under the pointer there, so nothing should pan.
+export function effectivePanBounds(bounds: CanvasBounds, obstacles: CanvasBounds[], pointer: { x: number; y: number }, margin = AUTO_PAN_MARGIN): CanvasBounds | null {
+  let b = { ...bounds };
+  for (const o of obstacles) {
+    if (o.right <= bounds.left || o.left >= bounds.right || o.bottom <= bounds.top || o.top >= bounds.bottom) continue;
+    if (pointer.x >= o.left && pointer.x <= o.right && pointer.y >= o.top && pointer.y <= o.bottom) return null;
+    if (o.left <= bounds.left + margin && pointer.y >= o.top && pointer.y <= o.bottom) b.left = Math.max(b.left, o.right);
+    if (o.right >= bounds.right - margin && pointer.y >= o.top && pointer.y <= o.bottom) b.right = Math.min(b.right, o.left);
+    if (o.top <= bounds.top + margin && pointer.x >= o.left && pointer.x <= o.right) b.top = Math.max(b.top, o.bottom);
+    if (o.bottom >= bounds.bottom - margin && pointer.x >= o.left && pointer.x <= o.right) b.bottom = Math.min(b.bottom, o.top);
+  }
+  if (b.right <= b.left || b.bottom <= b.top) return null;
+  return b;
+}
+
+// ---- revealing a previewed node without changing zoom ----
+// Opening, switching or resizing the document preview must never refit or zoom
+// the canvas. The preview is a flex sibling beside the surface on wide layouts
+// (it touches but does not overlap the canvas) and reaches into the surface on
+// short/phone layouts, so the usable canvas is the surface rectangle minus any
+// overlapping preview rectangle. Adjacent previews leave it untouched.
+export function uncoveredCanvasBounds(canvas: CanvasBounds, preview: CanvasBounds | null): CanvasBounds {
+  const b = {left:canvas.left,top:canvas.top,right:canvas.right,bottom:canvas.bottom};
+  if (!preview || preview.right <= preview.left || preview.bottom <= preview.top) return b;
+  // Touching (not overlapping) previews, e.g. the wide-layout flex sibling whose
+  // left edge sits exactly on the surface's right edge, leave the canvas whole.
+  if (preview.right <= b.left || preview.left >= b.right || preview.bottom <= b.top || preview.top >= b.bottom) return b;
+  const eps = 1;
+  // A docked preview is flush with one canvas edge; cut the canvas along that
+  // edge. A preview flush with several edges (a full-width bottom sheet) matches
+  // only the edge it actually protrudes from, because the perpendicular extent
+  // must stay strictly inside the canvas.
+  const cuts: CanvasBounds[] = [];
+  if (preview.right >= b.right - eps && preview.left > b.left) cuts.push({ ...b, right: Math.min(b.right, preview.left) });
+  if (preview.left <= b.left + eps && preview.right < b.right) cuts.push({ ...b, left: Math.max(b.left, preview.right) });
+  if (preview.bottom >= b.bottom - eps && preview.top > b.top) cuts.push({ ...b, bottom: Math.min(b.bottom, preview.top) });
+  if (preview.top <= b.top + eps && preview.bottom < b.bottom) cuts.push({ ...b, top: Math.max(b.top, preview.bottom) });
+  if (!cuts.length) return b; // a floating overlay that touches no edge
+  // Keep the cut that removes the least area: the natural dock side.
+  let best = cuts[0], bestArea = (best.right - best.left) * (best.bottom - best.top);
+  for (const c of cuts) { const area = (c.right - c.left) * (c.bottom - c.top); if (area > bestArea) { bestArea = area; best = c; } }
+  return best;
+}
+
+// Minimal translation in client pixels; zoom is never changed. If an axis
+// cannot fit, keep its leading header edge visible instead of alternately
+// aligning opposite edges on every resize callback.
+export function minimalRevealPan(node: CanvasBounds, uncovered: CanvasBounds): {x:number;y:number} {
+  const axis=(start:number,end:number,low:number,high:number)=>{
+    if(high<=low)return 0;
+    if(end-start>high-low){
+      const heading=Math.min(64,high-low);
+      return start<low||start>high-heading?low-start:0;
+    }
+    if(start<low)return low-start;
+    if(end>high)return high-end;
+    return 0;
+  };
+  if(uncovered.right<=uncovered.left||uncovered.bottom<=uncovered.top)return{x:0,y:0};
+  return{x:axis(node.left,node.right,uncovered.left,uncovered.right),y:axis(node.top,node.bottom,uncovered.top,uncovered.bottom)};
+}
+
 // Keyboard layout: Tab creates a child to the right, Shift+Tab a sibling below.
 export function childPosition(node: Pick<MindMapNodeConfig,'x'|'y'|'w'|'h'>): { x: number; y: number } {
   const s = nodeSize(node);

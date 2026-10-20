@@ -81,14 +81,49 @@ it('lists boards as accessible cards that open the board',async()=>{
   await mount({boards,boardsStatus:'ready'});
   const cards=host.querySelectorAll<HTMLButtonElement>('.board-summary');
   expect(cards).toHaveLength(2);
-  expect(cards[0].getAttribute('aria-label')).toBe('Open board Website launch');
-  expect(cards[0].querySelector('strong')?.textContent).toBe('Website launch');
-  expect(cards[0].textContent).toContain('Tasks/Website launch');
-  expect(cards[0].textContent).toContain('3 columns');
+  // Cards are grouped by parent folder (alphabetical), not raw list order.
+  expect(cards[0].getAttribute('aria-label')).toBe('Open board Reading queue');
+  expect(cards[0].querySelector('strong')?.textContent).toBe('Reading queue');
+  expect(cards[0].textContent).toContain('Notes/Reading');
+  expect(cards[0].textContent).toContain('2 columns');
+  expect(cards[1].getAttribute('aria-label')).toBe('Open board Website launch');
+  expect(cards[1].textContent).toContain('3 columns');
   expect(host.querySelector('.boards-count')?.textContent).toContain('2 boards');
   expect(host.querySelector('.boards-header button.btn.primary')).not.toBeNull();
   await act(async()=>cards[1].click());
-  expect(openBoard).toHaveBeenCalledWith('Notes/Reading');
+  expect(openBoard).toHaveBeenCalledWith('Tasks/Website launch');
+});
+
+it('groups boards under their parent folder, vault root first',async()=>{
+  await mount({boards:[...boards,board('Alpha','Root board',1)],boardsStatus:'ready'});
+  const titles=[...host.querySelectorAll('.resource-group-title')];
+  expect(titles.map(t=>t.textContent)).toEqual(['Vault root1 board','Notes1 board','Tasks1 board']);
+  const groups=[...host.querySelectorAll('.boards-grid')];
+  expect(groups.map(g=>g.querySelectorAll('.board-summary').length)).toEqual([1,1,1]);
+});
+
+it('filters boards by search and folder, with a clear-filters state',async()=>{
+  await mount({boards,boardsStatus:'ready'});
+  const search=host.querySelector<HTMLInputElement>('.resource-search input')!;
+  const setValue=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!;
+  await act(async()=>{setValue.call(search,'website');search.dispatchEvent(new Event('input',{bubbles:true}))});
+  expect(host.querySelectorAll('.board-summary')).toHaveLength(1);
+  expect(host.querySelector('.boards-count')?.textContent).toContain('1 of 2 boards shown');
+  const folder=host.querySelector<HTMLSelectElement>('.resource-folder select')!;
+  await act(async()=>{folder.value='Notes';folder.dispatchEvent(new Event('change',{bubbles:true}))});
+  expect(host.querySelectorAll('.board-summary')).toHaveLength(0);
+  expect(text()).toContain('No boards match');
+  const clear=[...host.querySelectorAll<HTMLButtonElement>('.boards-state button')].find(b=>b.textContent?.trim()==='Clear filters')!;
+  await act(async()=>clear.click());
+  expect(host.querySelectorAll('.board-summary')).toHaveLength(2);
+});
+
+it('shows modification dates derived from loaded document metadata',async()=>{
+  const iso=new Date(Date.now()-86400000).toISOString();
+  await mount({boards,boardsStatus:'ready',docs:[{path:'Tasks/Website launch/task.md',updatedAt:iso}]});
+  const modified=host.querySelectorAll('.board-summary-modified');
+  expect(modified).toHaveLength(1);
+  expect(modified[0].textContent).toContain('activity yesterday');
 });
 
 it('keeps the existing create dialog and templates working from the empty state',async()=>{

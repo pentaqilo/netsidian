@@ -1,3 +1,4 @@
+import {queuePreferenceWrite} from '../lib/preferences';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {type AccentPreset, isHex, resolveAccent, resolveMemoAccent} from '../lib/accent';
@@ -26,7 +27,7 @@ function mergeAppearance(saved:unknown):Appearance{
 export function useAppearance(user:string){
  const [appearance,setAppearance]=useState<Appearance>(()=>{try{return mergeAppearance(JSON.parse(localStorage.getItem('netsidian:appearance:'+user)||'{}'))}catch{return defaults}});const [loaded,setLoaded]=useState(false);const edits=useRef(0),writes=useRef<Promise<unknown>>(Promise.resolve()),alive=useRef(false),currentUser=useRef(user);currentUser.current=user;
  const cacheKey='netsidian:appearance:'+user,pendingKey=cacheKey+':pending';
- const queue=(next:Appearance)=>{const owner=user;writes.current=writes.current.catch(()=>{}).then(async()=>{
+ const queue=(next:Appearance)=>{const owner=user;writes.current=queuePreferenceWrite(async()=>{
   if(!alive.current||currentUser.current!==owner)return;const r=await fetch('/api/v1/me/preferences');if(!r.ok)return;const p=await r.json();if(!alive.current||currentUser.current!==owner)return;
   const saved=await fetch('/api/v1/me/preferences',{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json','X-Netsidian-Requested':'1'},body:JSON.stringify({...p,appearance:next})});
   if(saved.ok)try{const pending=localStorage.getItem(pendingKey);if(pending&&JSON.stringify(mergeAppearance(JSON.parse(pending)))===JSON.stringify(mergeAppearance(next)))localStorage.removeItem(pendingKey)}catch{}

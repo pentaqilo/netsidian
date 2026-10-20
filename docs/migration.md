@@ -52,11 +52,12 @@ Filenames renamed: `helm/` chart directory and the static icon
 
 ## Logo decision
 
-The monogram was replaced with a clean N mark defined in
+The current monogram uses the supplied `n-14-dark.svg` / `n-14-light.svg` geometry,
+retained under `frontend/public/icons/`, and defined for theme/accent-aware inline use in
 `frontend/src/lib/brand.ts`:
 
-- `BRAND_BODY = M48 48 H88 V208 H48 Z M168 48 H208 V208 H168 Z`
-- `BRAND_ACCENT = M88 48 L168 152 L168 208 L88 104 Z`
+- `BRAND_BODY = M30 58 86 26V195L30 228Z M172 79 228 46V197L172 230Z`
+- `BRAND_ACCENT = M86 26 172 133V230L86 123Z`
 
 The same geometry is used for the favicon and the static
 `frontend/public/icons/netsidian.svg`. It was verified in both light and dark

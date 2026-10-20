@@ -1,5 +1,6 @@
 import {highlightCode} from './codeHighlight';
  import MarkdownIt from 'markdown-it';
+import {stripProtectedBlocks} from './protectedBlocks';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import footnote from 'markdown-it-footnote';
@@ -89,6 +90,9 @@ export function renderInto(container:HTMLElement,src:string,resolve:(target:stri
  });
  md.renderer.rules.tagchip=(tokens,i)=>'<span class="tag-chip">'+md.utils.escapeHtml(tokens[i].content)+'</span>';
  let body=src;const fm=body.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);if(fm)body=body.slice(fm[0].length);
+ // Netsidian's own metadata blocks (mind-map membership links) are bookkeeping,
+ // not prose: hide them from the rendered view while the raw source keeps them.
+ body=stripProtectedBlocks(body);
  container.innerHTML=DOMPurify.sanitize(md.render(body));
  // markdown images pointing at vault attachments resolve to served URLs
  for(const img of container.querySelectorAll<HTMLImageElement>('img')){const src=img.getAttribute('src')||'';if(/^(https?:|data:|\/api\/)/.test(src))continue;const r=resolve(decodeURI(src.split('#')[0]));if(r.attach)img.src=r.attach;else img.classList.add('missing-embed')}

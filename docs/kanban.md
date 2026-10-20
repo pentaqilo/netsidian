@@ -16,7 +16,10 @@ Tasks/Website launch/
 
 Create a board with To do, In progress and Done, or use another board as a
 configuration template. Templates copy columns and creation defaults, without
-copying task files or card ordering. Click a task once (or press Space) to open
+copying task files or card ordering. The same dialog is available from the file
+explorer: the **⊕** menu on any folder offers **New board** prefilled with that
+folder. The **Boards** page groups boards by their parent folder, offers search
+and a folder filter, and shows the latest document activity inside each board folder. Click a task once (or press Space) to open
 its Visual Markdown Editor beside the board. Double-click or press Enter to
 open the normal document tab. Task details sit at the top, with the close
 button in the top-right corner.

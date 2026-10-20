@@ -19,6 +19,15 @@ trashed original remain available until the conflict is resolved. Attached folde
 retain their existing trash restrictions. Moving an attachment preserves its file
 type and refuses an occupied destination.
 
+The **⊕** button on a focused folder opens a create menu for that folder: a new
+document, folder, board, map or memo. Board and map entries open the same
+creation dialogs as the Boards and Maps pages, prefilled with the selected
+folder; a memo is created with the Memos naming convention and opens for
+editing. Board and map folders — and their `board.md` / `mindmap.md`
+configuration documents — carry a recognizable icon and a single-click
+**Open board** / **Open map** button next to the **…** menu; the document
+**…** menu offers the same open action.
+
 Drop files from a file manager onto a folder to import there, or onto a file to
 import into its parent folder. Blank workspace drops use the current destination.
 Files are copied into the vault; the source files on your computer are retained.

@@ -1,0 +1,14 @@
+/* Card copy is document content, not a tiny diagram label. Keep reading and
+   inline editing identical; zooming still scales the entire canvas normally. */
+.mindmap-view .mindmap-node-title{font-size:16px;line-height:1.35}
+.mindmap-view .mindmap-card-body.markdown-preview,
+.mindmap-view .mindmap-node-edit .visual-content .editor{font-size:15px;line-height:1.6}
+.mindmap-view .mindmap-card-body.markdown-preview h1,
+.mindmap-view .mindmap-node-edit .visual-content .editor h1{font-size:22px;line-height:1.25}
+.mindmap-view .mindmap-card-body.markdown-preview h2,
+.mindmap-view .mindmap-node-edit .visual-content .editor h2{font-size:20px;line-height:1.3}
+.mindmap-view .mindmap-card-body.markdown-preview h3,
+.mindmap-view .mindmap-node-edit .visual-content .editor h3{font-size:18px;line-height:1.35}
+.mindmap-view .mindmap-card-body.markdown-preview pre,
+.mindmap-view .mindmap-node-edit .visual-content .editor pre{font-size:13px;line-height:1.6}
+.mindmap-view .mindmap-file-chips :is(button,a){font-size:12px;line-height:1.4}

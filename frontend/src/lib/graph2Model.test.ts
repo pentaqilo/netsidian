@@ -22,3 +22,5 @@ describe('Graph 2 continuous navigation',()=>{
  it('keeps the world point under the cursor stationary while zooming',()=>{const camera={k:.5,x:100,y:80},anchor={x:320,y:240};const next=zoomCamera(camera,2,anchor);expect((anchor.x-camera.x)/camera.k).toBe((anchor.x-next.x)/next.k);expect((anchor.y-camera.y)/camera.k).toBe((anchor.y-next.y)/next.k)});
 });
 it('smart grouping retains every document and real reference and gives untagged neighbors a topic',()=>{const g=prepareGraph2(data,{...defaultGraph2Settings,groupBy:'smart'});expect(g.nodes.map(n=>n.id)).toEqual(data.nodes.map(n=>n.id));expect(g.edges).toEqual(data.edges);expect(g.nodes[0].atlasGroup).toContain('project/api');expect(g.nodes[2].atlasGroup).toBeUndefined();expect(prepareGraph2(data,defaultGraph2Settings).nodes[0].atlasGroup).toBeUndefined()});
+
+it('uses the real document link layout by default',()=>{expect(defaultGraph2Settings.layout).toBe('links')});

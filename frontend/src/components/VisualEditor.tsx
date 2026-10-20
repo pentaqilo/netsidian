@@ -13,8 +13,8 @@ import {addRowBefore,addRowAfter,addColumnBefore,addColumnAfter,toggleHeaderRow,
  import type {EditorView,NodeViewConstructor} from '@milkdown/kit/prose/view';
 import type {Node} from '@milkdown/kit/prose/model';
 import {Plugin,PluginKey,TextSelection} from '@milkdown/kit/prose/state';
-import {$prose,$view,replaceAll} from '@milkdown/kit/utils';
-import type {Draft} from '../lib/drafts';
+import {$prose,$view,replaceAll,getMarkdown} from '@milkdown/kit/utils';
+import type {DraftLike} from '../lib/drafts';
 import type {DocMeta} from '../api/types';
 import {closingBrackets,documentLinkTarget,linkTrigger,type LinkRequest} from '../lib/documentLinks';
 import {LinkWritingHint} from './LinkWritingHint';
@@ -22,7 +22,9 @@ import {DocumentLinkPicker} from './DocumentLinkPicker';
 import {diagramKind,renderDiagrams} from '../lib/diagrams';
 import {imageFileOk} from '../lib/images';
 import {makeResolver} from '../lib/markdown';
+import {reinsertProtectedBlocks,splitProtectedBlocks,stripProtectedBlocks} from '../lib/protectedBlocks';
 import {Icon} from './Icon';
+import {normalizeTag} from '../lib/documentTags';
 
 // Live diagram preview: a widget decoration below every mermaid/puml code
 // block. Widgets are cached per source text so typing elsewhere (or inside
@@ -56,6 +58,27 @@ function diagramDecorations(doc:Node):DecorationSet{
  });
  return DecorationSet.create(doc,out);
 }
+// Inline decorations leave text, selection, history and serialization untouched.
+// Match tags across formatted text runs, but never style code or link targets.
+export function hashtagDecorations(doc:Node):DecorationSet{
+ const out:Decoration[]=[];
+ doc.descendants((node,pos)=>{
+  if(!node.isTextblock||node.type.spec.code)return true;
+  const text=node.textBetween(0,node.content.size,'','\ufffc');
+  for(const match of text.matchAll(/(?:^|[\s(])#([\p{L}\p{N}_/-]+)/gu)){
+   try{normalizeTag(match[1])}catch{continue}
+   const from=match.index!+match[0].indexOf('#'),to=match.index!+match[0].length;
+   let prose=true;node.nodesBetween(from,to,child=>{if(child.type.spec.code||child.marks.some(m=>['code','inlineCode','link'].includes(m.type.name)))prose=false});
+   if(prose)out.push(Decoration.inline(pos+1+from,pos+1+to,{class:'tag-chip visual-tag-chip'}));
+  }
+  return false;
+ });
+ return DecorationSet.create(doc,out);
+}
+function hashtagPlugin(enabled:boolean){const key=new PluginKey<DecorationSet>();return new Plugin<DecorationSet>({key,
+ state:{init:(_,state)=>enabled?hashtagDecorations(state.doc):DecorationSet.empty,apply:(tr,previous)=>enabled&&tr.docChanged?hashtagDecorations(tr.doc):previous},
+ props:{decorations:state=>key.getState(state)??DecorationSet.empty},
+ });}
 const diagramKey=new PluginKey<DecorationSet>('nsd-diagram');
 // Bridge to the live component: image uploads and attachment URL resolution
 // arrive from the most recent render, so the plugin/view never close stale props.
@@ -91,21 +114,27 @@ const visualImageView:NodeViewConstructor=(node)=>{
 
 // Until custom syntax nodes and localized serialization exist, refuse to
 // parse documents where a stock CommonMark/GFM round trip could drop data.
+// Netsidian's own metadata blocks are invisible bookkeeping, not source
+// syntax the visual editor must refuse: they are stripped before the check.
 export function visualSafe(text:string):boolean{
- return !(/\r|^\uFEFF|[ \t]+$|^---\n|\[\[|%%|==|^\s*(?:>\s*)?\[![^\]]+\]|^\[\^[^\]]+\]|^\[[^\]]+\]:|\^[\w-]+\s*$|<!--|<\/?[A-Za-z][^>]*>|^\s*:::\w+/m.test(text));
+ return !(/\r|^\uFEFF|[ \t]+$|^---\n|\[\[|%%|==|^\s*(?:>\s*)?\[![^\]]+\]|^\[\^[^\]]+\]|^\[[^\]]+\]:|\^[\w-]+\s*$|<!--|<\/?[A-Za-z][^>]*>|^\s*:::\w+/m.test(stripProtectedBlocks(text)));
 }
 // Keep vault metadata and Obsidian links byte-for-byte while Milkdown edits
 // the ordinary Markdown body. A missing/changed sentinel blocks the update.
+// Netsidian metadata blocks are lifted out of the visual body entirely (they
+// must never appear as visible "Source syntax" chips) and re-inserted on
+// restore, so the saved document keeps them byte-for-byte.
 export function prepareVisual(source:string){
  const crlf=source.includes('\r\n');const bom=source.startsWith('\uFEFF')?'\uFEFF':'';
  const normalized=source.slice(bom.length).replace(/\r\n/g,'\n');
- const fm=normalized.startsWith('---\n')?(normalized.match(/^---\n[\s\S]*?^(?:---|\.\.\.)(?:\n|$)/m)?.[0]||''):'';
+ const {rest,blocks}=splitProtectedBlocks(normalized);
+ const fm=rest.startsWith('---\n')?(rest.match(/^---\n[\s\S]*?^(?:---|\.\.\.)(?:\n|$)/m)?.[0]||''):'';
  const protectedParts:{original:string;label:string;kind:'wiki'|'line';optional?:boolean}[]=[];
  let fenced=false,comment=false;
- const body=normalized.slice(fm.length).split('\n').map((line,index)=>{
+ const body=rest.slice(fm.length).split('\n').map((line,index)=>{
   if(/^\s*(```|~~~)/.test(line)){fenced=!fenced;return line}
   if(fenced)return line;
-  const unsafe=comment||/[ \t]+$|%%|==|^\s*(?:>\s*)?\[![^\]]+\]|^\[\^[^\]]+\]|^\[[^\]]+\]:|\^[\w-]+\s*$|<!--|<\/?[A-Za-z][^>]*>|^\s*:::\w+/m.test(line);
+  const unsafe=comment||/%%|==|^\s*(?:>\s*)?\[![^\]]+\]|^\[\^[^\]]+\]|^\[[^\]]+\]:|\^[\w-]+\s*$|<!--|<\/?[A-Za-z][^>]*>|^\s*:::\w+/m.test(line);
   if(line.includes('<!--'))comment=true;if(line.includes('-->'))comment=false;
   if(unsafe){const id=protectedParts.push({original:line,label:`Source syntax · line ${index+1}`,kind:'line'})-1;return `[Source syntax · line ${index+1}](#netsidian-protected-${id})`}
   return line.replace(/(!?)\[\[([^\]\n]+)\]\]/g,(whole,_embed:string,target:string)=>{
@@ -121,11 +150,29 @@ export function prepareVisual(source:string){
    const escaped=marker.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
    const re=new RegExp('\\[([^\\]\\n]*)\\]\\('+escaped+'\\)','g');
    const matches=[...next.matchAll(re)];
+   if(part.kind==='wiki'){
+    // A vault link is ordinary editable content: deleting it, duplicating it
+    // or changing its display label must not block surrounding memo edits.
+    // Keep the destination (and embed marker), preserving exact source when
+    // unchanged. Opaque source-only islands below remain strictly protected.
+    let invalid=false;
+    next=next.replace(re,(_whole,label:string)=>{
+     const plain=label.replace(/\\([\\`*_{}[\]()#+.!>-])/g,'$1');
+     if(plain===part.label)return part.original;
+     if(/[\[\]|\r\n]/.test(plain)){invalid=true;return _whole}
+     const target=part.original.slice(part.original.startsWith('!')?3:2,-2).split('|')[0];
+     return (part.original.startsWith('!')?'!':'')+'[['+target+'|'+plain+']]';
+    });
+    if(invalid)return null;
+    continue;
+   }
    if(matches.length===0&&part.optional)continue;
    if(matches.length!==1||matches[0][1].replace(/\\([\\`*_{}[\]()#+.!>-])/g,'$1')!==part.label)return null;
    next=next.replace(re,()=>part.original);
   }
-  const result=bom+fm+next;return crlf?result.replace(/\n/g,'\r\n'):result;
+   if([...next.matchAll(/#netsidian-protected-\d+/g)].some(m=>!source.includes(m[0])))return null;
+   next=reinsertProtectedBlocks(fm+next,blocks);
+   const result=bom+next;return crlf?result.replace(/\n/g,'\r\n'):result;
  }};
 }
 
@@ -214,8 +261,13 @@ type TableAction='add'|'rowBefore'|'rowAfter'|'colBefore'|'colAfter'|'header'|'d
 const LINK_URL=/^(?:https?:\/\/\S+|\/?[^:/?#\s]+(?:[/?#]\S*)?)$/i;
 export function linkHrefAllowed(href:string):boolean{return LINK_URL.test(href)}
 
-export function VisualEditor({compact=false,draft,onTagSearch,onSourceMode,onUploadImages,onUploaded,attachments,notePath,docs=[]}:{compact?:boolean;docs?:DocMeta[];draft:Draft;onTagSearch?:(tag:string)=>void;onSourceMode?:()=>void;onUploadImages?:(files:File[])=>Promise<string[]>;onUploaded?:()=>void;attachments?:{path:string;url:string}[];notePath?:string}){
+// `bare` renders the editing surface without any toolbar chrome: mind-map
+// cards use it for inline editing, where the card frame itself is the
+// control surface. Every other VisualEditor usage keeps its toolbar.
+export function VisualEditor({compact=false,bare=false,autoFocus=false,liveTags=false,hintDisclosure=false,showLinkHint=true,draft,onTagSearch,onSourceMode,onUploadImages,onUploaded,attachments,notePath,docs=[],flushRef}:{compact?:boolean;bare?:boolean;autoFocus?:boolean;liveTags?:boolean;hintDisclosure?:boolean;showLinkHint?:boolean;flushRef?:{current:(()=>string|null)|null};docs?:DocMeta[];draft:DraftLike;onTagSearch?:(tag:string)=>void;onSourceMode?:()=>void;onUploadImages?:(files:File[])=>Promise<string[]>;onUploaded?:()=>void;attachments?:{path:string;url:string}[];notePath?:string}){
  const host=useRef<HTMLDivElement>(null),editor=useRef<Editor|null>(null),muting=useRef(false),imagesInput=useRef<HTMLInputElement>(null);
+ const pendingVisual=useRef(false),inputReady=useRef(!bare);
+ const flushCurrent=useRef<(()=>string|null)|null>(null);
  const [ready,setReady]=useState(false),[error,setError]=useState('');
  const [ui,setUi]=useState<VisualUi>(initialUi);
  const [linkEdit,setLinkEdit]=useState<{from:number;to:number;text:string;original:string;href:string}|null>(null);
@@ -225,23 +277,26 @@ export function VisualEditor({compact=false,draft,onTagSearch,onSourceMode,onUpl
  const sync=(v:EditorView|null)=>{if(v)setUi(computeUi(v.state))};
  const suggest=(v:EditorView,explicit=false)=>{if(!draft.canEdit)return;const {$from,from,to}=v.state.selection;if(!explicit&&($from.parent.type.spec.code||$from.marks().some(m=>m.type.name==='code'))){setRequest(null);return}const before=$from.parent.textBetween(0,$from.parentOffset,'','\ufffc'),trigger=linkTrigger(before,explicit),key=before+'\0'+from;if(!trigger||(!explicit&&dismissed.current===key)){setRequest(null);return}const start=from-(before.length-trigger.from),after=$from.parent.textBetween($from.parentOffset,$from.parent.content.size,'','\ufffc'),end=to+closingBrackets(after,0),rect=v.coordsAtPos(from);setRequest({query:trigger.query,manual:explicit,rect,owner:v.dom,close:()=>{dismissed.current=key;setRequest(null)},choose:doc=>{const link=v.state.schema.marks.link;if(!link)return;const target=documentLinkTarget(doc),label=doc.title||doc.path.split('/').pop()!.replace(/\.md$/i,''),part=preparedRef.current.addWiki(target,label);v.dispatch(v.state.tr.replaceWith(start,end,v.state.schema.text(part.label,[link.create({href:part.href})])).scrollIntoView());setRequest(null);v.focus()}})};
  suggestRef.current=suggest;
- useEffect(()=>{if(!safe||!host.current)return;let active=true;preparedRef.current=prepared;lastDraft.current=draft.text;lastMarkdown.current=prepared.markdown;setReady(false);setError('');setUi(initialUi);
+ useEffect(()=>{if(!safe||!host.current)return;let active=true;inputReady.current=!bare;pendingVisual.current=false;preparedRef.current=prepared;lastDraft.current=draft.text;lastMarkdown.current=prepared.markdown;setReady(false);setError('');setUi(initialUi);
+  const flush=()=>{if(!active||!editor.current||!pendingVisual.current)return draft.text;const markdown=editor.current.action(getMarkdown());const restored=preparedRef.current.restore(markdown);if(restored===null){setError('This source-only block cannot be changed visually. Undo the change before switching modes.');return null}setError('');if(restored!==draft.text){lastDraft.current=restored;lastMarkdown.current=markdown;draft.change(restored)}pendingVisual.current=false;return restored};flushCurrent.current=flush;if(flushRef)flushRef.current=flush;
   const instance=Editor.make().config((ctx:any)=>{
    ctx.set(rootCtx,host.current!);ctx.set(defaultValueCtx,prepared.markdown);
-   ctx.update(editorViewOptionsCtx,(prev:any)=>({...prev,editable:()=>draft.canEdit}));
+   ctx.update(editorViewOptionsCtx,(prev:any)=>({...prev,editable:()=>draft.canEdit&&inputReady.current}));
    ctx.get(listenerCtx).markdownUpdated((_ctx:any,markdown:string,previous:string)=>{
     if(!active||muting.current||markdown===previous||markdown===draft.text)return;
-    const restored=preparedRef.current.restore(markdown);if(restored===null){setError('A protected vault link changed. Undo that edit or use Source mode.');return}
-    lastDraft.current=restored;lastMarkdown.current=markdown;draft.change(restored);
+    const restored=preparedRef.current.restore(markdown);if(restored===null){setError('This source-only block cannot be changed visually. Undo the change to continue.');return}
+    setError('');lastDraft.current=restored;lastMarkdown.current=markdown;pendingVisual.current=false;draft.change(restored);
    });
+   ctx.get(listenerCtx).blur(()=>{flushCurrent.current?.()});
    ctx.get(listenerCtx).selectionUpdated((_ctx:any)=>{if(active)sync(view())});
-  }).use(commonmark).use(gfm).use(listener).use($prose(()=>new Plugin({props:{handleKeyDown:(v,event)=>{if((event.ctrlKey||event.metaKey)&&event.code==='Space'){event.preventDefault();suggestRef.current(v,true);return true}return false}},view:()=>({update:(v,previous)=>{if(!v.state.doc.eq(previous.doc)||!v.state.selection.eq(previous.selection))suggestRef.current(v)}})}))).use($prose(()=>createVisualPlugin())).use($view(imageSchema.node,()=>visualImageView));
-  instance.create().then(()=>{if(!active){void instance.destroy();return}editor.current=instance;setReady(true)}).catch(e=>{if(active)setError(String(e))});
+  }).use(commonmark).use(gfm).use(listener).use($prose(()=>new Plugin({props:{handleKeyDown:(v,event)=>{if((event.ctrlKey||event.metaKey)&&event.code==='Space'){event.preventDefault();suggestRef.current(v,true);return true}return false}},view:()=>({update:(v,previous)=>{if(!muting.current&&!v.state.doc.eq(previous.doc))pendingVisual.current=true;if(!v.state.doc.eq(previous.doc)||!v.state.selection.eq(previous.selection))suggestRef.current(v)}})}))).use($prose(()=>createVisualPlugin())).use($prose(()=>hashtagPlugin(liveTags))).use($view(imageSchema.node,()=>visualImageView));
+  instance.create().then(()=>{if(!active){void instance.destroy();return}editor.current=instance;inputReady.current=true;instance.action(ctx=>{const v=ctx.get(editorViewCtx);v.setProps({editable:()=>draft.canEdit&&inputReady.current});if(autoFocus)v.focus()});setReady(true)}).catch(e=>{if(active)setError(String(e))});
   const off=draft.subscribe(()=>{if(!active||!editor.current)return;
+   const live=view();if(live){live.setProps({editable:()=>draft.canEdit&&inputReady.current});sync(live)}
    if(draft.text===lastDraft.current)return;const next=prepareVisual(draft.text);preparedRef.current=next;lastDraft.current=draft.text;if(next.markdown===lastMarkdown.current)return;const current=view(),anchor=current?.state.selection.from||1;muting.current=true;try{editor.current.action(replaceAll(next.markdown));const updated=view();if(updated)updated.dispatch(updated.state.tr.setSelection(TextSelection.near(updated.state.doc.resolve(Math.min(anchor,updated.state.doc.content.size)))));lastMarkdown.current=next.markdown}finally{muting.current=false}
   });
-  return()=>{active=false;off();editor.current=null;setLinkEdit(null);setRequest(null);void instance.destroy()};
- },[draft,safe,prepared]);
+  return()=>{flush();active=false;off();if(flushCurrent.current===flush)flushCurrent.current=null;if(flushRef?.current===flush)flushRef.current=null;editor.current=null;setLinkEdit(null);setRequest(null);void instance.destroy()};
+ },[draft,safe,prepared,flushRef,autoFocus,bare,liveTags]);
  // Fresh resolver per attachment-list change: relative markdown image paths
  // resolve exactly like the read view (folder-relative, then fuzzy basename).
  useEffect(()=>{
@@ -326,30 +381,30 @@ function openLink(){const v=view();if(!v||!draft.canEdit)return;const s=v.state;
   if(edit.from===edit.to){setLinkEdit(null);return}
   v.dispatch(v.state.tr.removeMark(edit.from,edit.to,link).scrollIntoView());setLinkEdit(null);v.focus();
  }
- if(!safe)return <div className="visual-unavailable" role="status"><h3>Visual editing is unavailable for this document</h3><p>This document uses syntax the visual editor cannot yet preserve. Switch to Source to edit it safely.</p>{onSourceMode&&<button className="btn" onClick={onSourceMode}>Edit as Markdown source</button>}</div>;
+ if(!safe)return <div className="visual-unavailable" role="status"><h3>Visual editing is unavailable for this document</h3><p>This document uses syntax the visual editor cannot yet preserve. Switch to Source to edit it safely.</p>{onSourceMode&&<button type="button" className="btn" onClick={()=>{if(flushCurrent.current?.()!==null)onSourceMode?.()}}>Edit as Markdown source</button>}</div>;
  const dis=!ready||!draft.canEdit;
- const btn=(id:Action,label:string,icon:string,extra?:{disabled?:boolean})=><button key={id} title={label} aria-label={label} disabled={dis||extra?.disabled} onMouseDown={e=>e.preventDefault()} onClick={()=>run(id)}><Icon name={icon}/></button>;
+ const btn=(id:Action,label:string,icon:string,extra?:{disabled?:boolean})=><button type="button" key={id} title={label} aria-label={label} disabled={dis||extra?.disabled} onMouseDown={e=>e.preventDefault()} onClick={()=>run(id)}><Icon name={icon}/></button>;
  const tableBtn=(id:TableAction,label:string,disabled:boolean)=>{const icons:Record<TableAction,string>={add:'table',rowBefore:'up',rowAfter:'down',colBefore:'arrow',colAfter:'arrowR',header:'table',deleteRow:'minus',deleteCol:'close',delete:'trash'};
-  return <button key={id} role="menuitem" title={label} disabled={dis||disabled} onMouseDown={e=>e.preventDefault()} onClick={e=>{runTable(id);e.currentTarget.closest('details')?.removeAttribute('open')}}><Icon name={icons[id]}/>{label}</button>};
+  return <button type="button" key={id} role="menuitem" title={label} disabled={dis||disabled} onMouseDown={e=>e.preventDefault()} onClick={e=>{runTable(id);e.currentTarget.closest('details')?.removeAttribute('open')}}><Icon name={icons[id]}/>{label}</button>};
  const blockValue=/^h[1-6]$|^paragraph$/.test(ui.block)?ui.block:'other';
  const advancedTools=<>
-  <div className="visual-tool-group"><select aria-label="Block style" title="Block style" disabled={dis||ui.inTable||ui.code!==null} value={blockValue} onChange={e=>setBlock(e.target.value)}>{blockValue==='other'&&<option value="other">Other</option>}<option value="paragraph">Paragraph</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="h4">Heading 4</option><option value="h5">Heading 5</option><option value="h6">Heading 6</option></select>{btn('quote','Block quote','quote')}{btn('codeBlock','Code block','braces')}{btn('rule','Horizontal rule','minus')}{onUploadImages&&<><button title="Insert image" aria-label="Insert image" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={()=>imagesInput.current?.click()}><Icon name="upload"/></button><input ref={imagesInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" multiple hidden onChange={e=>{const files=Array.from(e.currentTarget.files??[]);if(files.length)handleFiles(files);e.currentTarget.value=''}}/></>}</div>
+  <div className="visual-tool-group"><select aria-label="Block style" title="Block style" disabled={dis||ui.inTable||ui.code!==null} value={blockValue} onChange={e=>setBlock(e.target.value)}>{blockValue==='other'&&<option value="other">Other</option>}<option value="paragraph">Paragraph</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="h4">Heading 4</option><option value="h5">Heading 5</option><option value="h6">Heading 6</option></select>{btn('quote','Block quote','quote')}{btn('codeBlock','Code block','braces')}{btn('rule','Horizontal rule','minus')}{onUploadImages&&<><button type="button" title="Insert image" aria-label="Insert image" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={()=>imagesInput.current?.click()}><Icon name="upload"/></button><input ref={imagesInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" multiple hidden onChange={e=>{const files=Array.from(e.currentTarget.files??[]);if(files.length)handleFiles(files);e.currentTarget.value=''}}/></>}</div>
   <div className="visual-tool-group">{btn('bold','Bold','bold')}{btn('italic','Italic','italic')}{btn('strike','Strikethrough','strike')}{btn('code','Inline code','code')}{btn('clear','Clear formatting','eraser')}</div>
   <div className="visual-tool-group">{btn('bullet','Bulleted list','bullets')}{btn('numbered','Numbered list','numbered')}{btn('task','Task list','check')}{btn('indent','Indent','indent')}{btn('outdent','Outdent','outdent')}{btn('up','Move block up','up')}{btn('down','Move block down','down')}</div>
-  <div className="visual-tool-group"><button title="Insert document link" aria-label="Insert document link" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={()=>{const v=view();if(v)suggest(v,true)}}><Icon name="fileplus"/></button><button title="Link" aria-label="Link" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={openLink}><Icon name="link"/></button></div>
+  <div className="visual-tool-group"><button type="button" title="Insert document link" aria-label="Insert document link" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={()=>{const v=view();if(v)suggest(v,true)}}><Icon name="fileplus"/></button><button type="button" title="Link" aria-label="Link" disabled={dis} onMouseDown={e=>e.preventDefault()} onClick={openLink}><Icon name="link"/></button></div>
   {ui.code&&<div className="visual-tool-group"><select aria-label="Code block language" title="Code block language" disabled={dis} value={ui.code.lang} onChange={e=>setCodeLang(e.target.value)}><option value="">Plain</option><option value="js">JavaScript</option><option value="ts">TypeScript</option><option value="json">JSON</option><option value="html">HTML</option><option value="css">CSS</option><option value="bash">Bash</option><option value="py">Python</option><option value="go">Go</option><option value="sql">SQL</option><option value="yaml">YAML</option><option value="c">C</option><option value="cpp">C++</option><option value="java">Java</option><option value="csharp">C#</option><option value="toml">TOML</option><option value="config">Config / INI</option><option value="properties">Properties</option><option value="md">Markdown</option><option value="mermaid">Mermaid</option><option value="plantuml">PlantUML</option></select></div>}
   <details className="visual-more"><summary title="Tables">Table <Icon name="chevron" size={13}/></summary><div role="menu">{tableBtn('add','Insert 3×3 table',false)}<hr className="visual-menu-sep"/>{tableBtn('rowBefore','Add row above',!ui.inTable)}{tableBtn('rowAfter','Add row below',!ui.inTable)}{tableBtn('colBefore','Add column before',!ui.inTable)}{tableBtn('colAfter','Add column after',!ui.inTable)}{tableBtn('header','Toggle header row',!ui.inTable)}{tableBtn('deleteRow','Delete row',!ui.inTable)}{tableBtn('deleteCol','Delete column',!ui.inTable)}{tableBtn('delete','Delete table',!ui.inTable)}</div></details>
  </>;
- return <div className="visual-editor"><div className="visual-toolbar" role="toolbar" aria-label="Visual Markdown formatting">
+ return <div className="visual-editor" aria-busy={!ready}>{!bare&&<div className="visual-toolbar" role="toolbar" aria-label="Visual Markdown formatting">
   <div className="visual-tool-group">{btn('undo','Undo','undoArrow')}{btn('redo','Redo','redoArrow')}</div>
   {compact&&<div className="visual-tool-group">{btn('bold','Bold','bold')}{btn('italic','Italic','italic')}{btn('task','Task list','check')}</div>}
   {compact?<details className="visual-format-more"><summary title="More formatting" aria-label="More formatting"><Icon name="more"/></summary><div className="visual-format-panel" role="group" aria-label="Additional formatting">{advancedTools}</div></details>:advancedTools}
-  {onSourceMode&&<button className="visual-source-toggle" title="Edit as Markdown source" aria-label="Edit as Markdown source" disabled={!draft.canEdit} onClick={onSourceMode}><Icon name="code" size={14}/><span>Source</span></button>}
- </div>
+  {onSourceMode&&<button type="button" className="visual-source-toggle" title="Edit as Markdown source" aria-label="Edit as Markdown source" disabled={!draft.canEdit} onClick={()=>{if(flushCurrent.current?.()!==null)onSourceMode?.()}}><Icon name="code" size={14}/><span>Source</span></button>}
+ </div>}
  {linkEdit&&<div className="visual-dialog" role="dialog" aria-label="Edit link">
   <input aria-label="Link text" placeholder="Text" value={linkEdit.text} onChange={e=>setLinkEdit({...linkEdit,text:e.target.value})}/>
   <input aria-label="Link URL" placeholder="https://… or vault/path" value={linkEdit.href} onChange={e=>setLinkEdit({...linkEdit,href:e.target.value})} onKeyDown={e=>{if(e.key==='Enter')applyLink();if(e.key==='Escape')setLinkEdit(null)}}/>
-  <button onClick={applyLink}>Save</button>{linkEdit.href&&<button onClick={removeLink}>Remove link</button>}<button onClick={()=>setLinkEdit(null)}>Cancel</button>
+  <button type="button" onClick={applyLink}>Save</button>{linkEdit.href&&<button type="button" onClick={removeLink}>Remove link</button>}<button type="button" onClick={()=>setLinkEdit(null)}>Cancel</button>
  </div>}
- {error&&<p role="alert" className="visual-error">{error}</p>}<LinkWritingHint enabled={draft.canEdit}/><div className="visual-content" aria-label="Visual Markdown editor">{onTagSearch&&<DocumentTagSummary text={draft.text} onSearch={onTagSearch}/>}<div className="visual-editor-host" ref={host}/></div>{!ready&&!error&&<p className="visual-loading">Loading Visual editor…</p>}<DocumentLinkPicker request={request} docs={docs} currentPath={notePath}/></div>;
+ {error&&<p role="alert" className="visual-error">{error}</p>}{showLinkHint&&<LinkWritingHint enabled={draft.canEdit} disclosure={hintDisclosure}/>}<div className="visual-content" aria-label="Visual Markdown editor">{onTagSearch&&<DocumentTagSummary text={draft.text} onSearch={onTagSearch}/>}<div className="visual-editor-host" ref={host}/></div>{!ready&&!error&&<p className="visual-loading">Loading Visual editor…</p>}<DocumentLinkPicker request={request} docs={docs} currentPath={notePath}/></div>;
 }

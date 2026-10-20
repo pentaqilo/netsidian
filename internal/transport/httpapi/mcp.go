@@ -18,6 +18,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pentaqilo/netsidian/internal/domain"
+	"github.com/pentaqilo/netsidian/internal/service"
 )
 
 const mcpOriginHeader = "X-Netsidian-MCP-Origin"
@@ -135,7 +136,7 @@ func (s *Server) newMCPHandler(api http.Handler, routes []apiRoute) http.Handler
 				authenticationGuide = " Desktop localhost token-free access is enabled: no PAT is needed. Only selected vaults and configured permissions are accessible. Open desktop Settings → MCP & agents to change access."
 			}
 		}
-		server := mcp.NewServer(&mcp.Implementation{Name: "netsidian", Version: "0.1.0"}, &mcp.ServerOptions{Instructions: memoryGuide + authenticationGuide + " Discover the exact API operation before calling it.", Capabilities: &mcp.ServerCapabilities{}})
+		server := mcp.NewServer(&mcp.Implementation{Name: "netsidian", Version: service.Version}, &mcp.ServerOptions{Instructions: memoryGuide + authenticationGuide + " Discover the exact API operation before calling it.", Capabilities: &mcp.ServerCapabilities{}})
 		readonly := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: mcpBoolPtr(false)}
 		mcp.AddTool(server, &mcp.Tool{Name: "netsidian_connect", Description: "Get setup links, authentication steps, and the durable-memory convention. Never pass your token as a tool argument.", Annotations: readonly}, func(ctx context.Context, r *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 			base := mcpBase(r)

@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+import darkLogo from '../../public/icons/n-14-dark.svg?raw';
+import lightLogo from '../../public/icons/n-14-light.svg?raw';
+import fallbackLogo from '../../public/icons/netsidian.svg?raw';
 import { afterEach, expect, it } from 'vitest';
 import { resolveAccent } from './accent';
-import { watchBrandFavicon } from './brand';
+import { BRAND_BODY,BRAND_ACCENT,brandSVG,watchBrandFavicon } from './brand';
 
 let stop: (() => void) | undefined;
 afterEach(() => {
@@ -48,4 +51,18 @@ it('restores the static fallback and stops updates when disposed', async () => {
   document.documentElement.style.setProperty('--accent', '#ff0000');
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(document.querySelector('link')!.getAttribute('href')).toBe('/icons/netsidian.svg');
+});
+
+
+it('uses the supplied n-14 geometry consistently in both themes and the static fallback',()=>{
+ for(const theme of ['dark','light'] as const){
+  const source=theme==='dark'?darkLogo:lightLogo;
+  const paths=[...new DOMParser().parseFromString(source,'image/svg+xml').querySelectorAll('path')];
+  expect(BRAND_BODY).toBe(paths.filter(p=>p.getAttribute('fill')==='currentColor').map(p=>p.getAttribute('d')).join(' '));
+  expect(BRAND_ACCENT).toBe(paths.find(p=>p.getAttribute('fill')!=='currentColor')?.getAttribute('d'));
+  const generated=new DOMParser().parseFromString(brandSVG(theme,'#0561f5'),'image/svg+xml');
+  expect(generated.querySelector('path')?.getAttribute('fill')).toBe(theme==='dark'?'#FFFFFF':'#20201E');
+ }
+ const fallback=fallbackLogo;
+ expect(fallback).toContain(BRAND_BODY);expect(fallback).toContain(BRAND_ACCENT);
 });

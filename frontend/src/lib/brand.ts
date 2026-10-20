@@ -1,8 +1,9 @@
 import { isHex, type Theme } from './accent';
 
-// Netsidian N mark: two foreground stems joined by an accent diagonal.
-export const BRAND_BODY = `M48 48 H88 V208 H48 Z M168 48 H208 V208 H168 Z`;
-export const BRAND_ACCENT = `M88 48 L168 152 L168 208 L88 104 Z`;
+// Supplied n-14 dark/light SVG geometry: preserve the slanted stems while
+// keeping the diagonal synchronized with the resolved application accent.
+export const BRAND_BODY = `M30 58 86 26V195L30 228Z M172 79 228 46V197L172 230Z`;
+export const BRAND_ACCENT = `M86 26 172 133V230L86 123Z`;
 
 export const brandForeground = (theme: Theme) => theme === 'light' ? '#20201E' : '#FFFFFF';
 

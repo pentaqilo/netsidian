@@ -1,5 +1,9 @@
 # MCP design and deployment
 
+For the reviewed knowledge/project workflow roadmap and company-use gaps, see
+[MCP for knowledge and project work](mcp-agent-workflows.md). It distinguishes
+implemented adapter behavior from proposed domain tools.
+
 ## Decisions
 
 | Area | Implementation | Reason |

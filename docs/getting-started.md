@@ -65,7 +65,9 @@ Next: [deployment](deployment.md) for multi-device access, or [development](deve
 
 ## Quick capture and daily notes
 
-Open **Memos** from the ribbon or command palette. Select a folder, type Markdown,
+Open **Memos** from the ribbon or command palette. Select a folder and write in the
+default Visual editor; Markdown formatting and #tags render live without changing
+the editor when it loses focus. Use **Markdown** for raw source editing,
 and click **Save Memo** beside the folder dropdown, or press **Ctrl/Cmd+Enter**.
 Every memo is a regular Markdown document marked with `memo` in its frontmatter
 tags. Add topic `#tags` in the body. Memos can live in any folder; ordinary notes

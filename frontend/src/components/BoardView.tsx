@@ -17,17 +17,23 @@ import {
   columnSlug, insertOrdered, parseBoardDrag,
   populatedColumnRemovalErrors, randomIdemKey, swapOrdered, validateBoardColumns,
 } from '../lib/boards';
+import {CanvasNavigation,type CanvasOverview} from './CanvasNavigation';
+import './graphBoardNavigation.css';
+import {bindBoardPan} from '../lib/boardPan';
 
 const errMsg = (e: unknown) => e instanceof Error ? e.message : 'Something went wrong.';
 const VisualEditor=lazy(()=>import('./VisualEditor').then(m=>({default:m.VisualEditor})));
 const clamp=(n:number,min:number,max:number)=>Math.max(min,Math.min(max,n));
+const BOARD_ZOOM_MIN=0.6,BOARD_ZOOM_MAX=1.5;
+const boardZoomStep=(z:number,factor:number)=>clamp(Math.round(z*factor*100)/100,BOARD_ZOOM_MIN,BOARD_ZOOM_MAX);
 function storedSize(key:string,fallback:number,min:number,max:number){try{const raw=localStorage.getItem(key),n=raw===null?fallback:Number(raw);return Number.isFinite(n)?clamp(n,min,max):fallback}catch{return fallback}}
 function exportDraft(path:string,text:string){const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'})),link=document.createElement('a');link.href=url;link.download=path.split('/').pop()||'task.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 
-export function BoardView({ space, boardPath, writable, docs, attachments = [], epoch, onOpenDoc, onFlushDraft, onInvalidateDoc, onChanged, onMoveToBoard, onRevealFolder, onPreviewDraft, onResolveConflict, onUploadImages, principal }: {
+export function BoardView({ space, boardPath, writable, docs, attachments = [], epoch, onOpenDoc, onFlushDraft, onInvalidateDoc, onChanged, onMoveToBoard, onRevealFolder, onPreviewDraft, onResolveConflict, onUploadImages, principal, minimapDefault=false }: {
   space: string; boardPath: string; writable: boolean; docs: DocMeta[]; epoch: number;
   attachments?: {path: string}[];
   principal:string;
+  minimapDefault?:boolean;
   onPreviewDraft:(id:string)=>Promise<DraftDocument>;
   onResolveConflict:(id:string)=>Promise<void>;
   onUploadImages?:(files:File[],notePath:string)=>Promise<string[]>;
@@ -77,6 +83,50 @@ export function BoardView({ space, boardPath, writable, docs, attachments = [], 
   const changeSize=(value:number)=>{const n=narrow?clamp(value,minHeight,75):clamp(value,minWidth,60);narrow?setHeight(n):setWidth(n);try{localStorage.setItem(sizeKey+(narrow?':height':':width'),String(n))}catch{}};
   const [previewRetry,setPreviewRetry]=useState(0);
   const draggedUntil=useRef(0);
+  // Floating navigation: a column-width zoom plus a scroll overview that jumps
+  // between columns and vertical positions. It reads the live DOM and only ever
+  // scrolls/zooms the view — it never touches cards, drafts or drag state.
+  const columnsRef=useRef<HTMLDivElement>(null);
+  const [boardZoom,setBoardZoom]=useState(1);
+  const [handMode,setHandMode]=useState(false);
+  useEffect(()=>{const el=columnsRef.current;if(el)return bindBoardPan(el,handMode,()=>setHandMode(false))},[!!board,handMode]);
+  const [boardOverview,setBoardOverview]=useState<CanvasOverview|null>(null);
+  const boardScrollFrame=useRef(0);
+  const navigateBoard=useCallback((point:{x:number;y:number})=>{
+    const el=columnsRef.current;if(!el)return;
+    const maxLeft=Math.max(0,el.scrollWidth-el.clientWidth),maxTop=Math.max(0,el.scrollHeight-el.clientHeight);
+    const left=clamp(point.x-el.clientWidth/2,0,maxLeft),top=clamp(point.y-el.clientHeight/2,0,maxTop);
+    if(typeof el.scrollTo==='function')el.scrollTo({left,top});else{el.scrollLeft=left;el.scrollTop=top}
+  },[]);
+  const measureBoard=useCallback(()=>{
+    const el=columnsRef.current;if(!el){setBoardOverview(null);return}
+    const items=[...el.querySelectorAll<HTMLElement>('.board-column')].map((c,i)=>({
+      id:c.dataset.columnId||c.getAttribute('aria-label')||String(i),
+      x:c.offsetLeft,y:c.offsetTop,w:c.offsetWidth,h:c.offsetHeight,
+      ...(c.classList.contains('completion')?{color:'var(--ok)'}:{}),
+    }));
+    setBoardOverview({
+      bounds:{x:0,y:0,w:Math.max(1,el.scrollWidth),h:Math.max(1,el.scrollHeight)},
+      viewport:{x:el.scrollLeft,y:el.scrollTop,w:el.clientWidth,h:el.clientHeight},
+      items,onNavigate:navigateBoard,
+    });
+  },[navigateBoard]);
+  const onBoardScroll=useCallback(()=>{
+    if(boardScrollFrame.current)return;
+    boardScrollFrame.current=requestAnimationFrame(()=>{boardScrollFrame.current=0;const el=columnsRef.current;if(!el)return;setBoardOverview(o=>o?{...o,viewport:{x:el.scrollLeft,y:el.scrollTop,w:el.clientWidth,h:el.clientHeight}}:o)});
+  },[]);
+  useEffect(()=>{if(!board)return;measureBoard();const id=requestAnimationFrame(measureBoard);const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measureBoard);if(columnsRef.current){observer?.observe(columnsRef.current);columnsRef.current.querySelectorAll('.board-column').forEach(c=>observer?.observe(c))}return()=>{observer?.disconnect();cancelAnimationFrame(id);if(boardScrollFrame.current)cancelAnimationFrame(boardScrollFrame.current);boardScrollFrame.current=0}},[board,boardZoom,measureBoard]);
+  const zoomBoard=useCallback((target:number)=>{
+    const el=columnsRef.current;if(!el){setBoardZoom(target);return}
+    const center={x:(el.scrollLeft+el.clientWidth/2)/Math.max(1,el.scrollWidth),y:(el.scrollTop+el.clientHeight/2)/Math.max(1,el.scrollHeight)};
+    setBoardZoom(target);requestAnimationFrame(()=>{const node=columnsRef.current;if(!node)return;node.scrollLeft=Math.max(0,center.x*node.scrollWidth-node.clientWidth/2);node.scrollTop=Math.max(0,center.y*node.scrollHeight-node.clientHeight/2)});
+  },[]);
+  const fitBoard=useCallback(()=>{
+    const el=columnsRef.current;if(!el)return;
+    const target=boardZoomStep(boardZoom,el.clientWidth/Math.max(1,el.scrollWidth));
+    setBoardZoom(target);
+    requestAnimationFrame(()=>{const node=columnsRef.current;if(!node)return;if(typeof node.scrollTo==='function')node.scrollTo({left:0,top:0});else{node.scrollLeft=0;node.scrollTop=0}});
+  },[boardZoom]);
   const previewCard=board?.columns.flatMap(c=>c.cards).find(c=>c.id===previewId)||board?.overflow?.find(c=>c.id===previewId);
   const flushPreview=useCallback(async()=>{const d=draftRef.current;if(!d)return true;try{await d.flush();if(d.dirty)throw new Error('Save or export this draft before closing it or selecting another task.');return true}catch(e){setPreviewError(errMsg(e));return false}},[]);
   const selectCard=async(id:string)=>{if(busyRef.current.has(id)||Date.now()<draggedUntil.current||id===previewId)return;const seq=++selection.current;if(!await flushPreview()||seq!==selection.current)return;draftRef.current=null;setPreviewDraft(null);setPreview(null);setPreviewError('');setPreviewMode('visual');setPreviewId(id)};
@@ -257,11 +307,11 @@ export function BoardView({ space, boardPath, writable, docs, attachments = [], 
    {operationWarnings.length>0&&<div className="board-banner warning" role="alert">{operationWarnings.join(' · ')}</div>}
    {board.warnings?.length ? <div className="board-banner warning">{board.warnings.join(' · ')}</div> : null}
    <div className="board-content" ref={content} style={{'--task-preview-width':effectiveWidth+'%','--task-preview-height':effectiveHeight+'%'} as React.CSSProperties}><div className="board-surface">
-   <div className="board-columns" role="list" aria-label="Board columns">
+   <div className="board-columns" role="list" aria-label="Board columns" tabIndex={0} title="Drag empty space to pan. Use Hand tool or hold Space to pan over tasks." ref={columnsRef} onScroll={onBoardScroll} style={{'--board-zoom':boardZoom} as React.CSSProperties}>
     {columns.map((col) => {
      const over = !!col.wipLimit && col.cards.length > col.wipLimit;
      const isDefault = board.config.createDefaults?.column === col.id;
-     return <section key={col.id} className={'board-column ' + (col.completion ? 'completion ' : '') + (dropTarget?.columnId === col.id && !dropTarget.cardId ? 'drop' : '')} role="listitem" aria-label={col.label}
+      return <section key={col.id} data-column-id={col.id} className={'board-column ' + (col.completion ? 'completion ' : '') + (dropTarget?.columnId === col.id && !dropTarget.cardId ? 'drop' : '')} role="listitem" aria-label={col.label}
       onDragOver={(e) => { if (!acceptsBoardDrag(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; setDropTarget({ columnId: col.id }); }}
       onDragLeave={(e) => { if (e.currentTarget.contains(e.relatedTarget as Node | null)) return; setDropTarget((t) => t?.columnId === col.id && !t.cardId ? null : t); }}
       onDrop={(e) => { if (!acceptsBoardDrag(e)) return; e.preventDefault(); e.stopPropagation(); void handleDrop(e,col.id,null,true); }}>
@@ -303,8 +353,11 @@ export function BoardView({ space, boardPath, writable, docs, attachments = [], 
    {overflow.length > 0 && <section className="board-supporting">
     <header><strong>Supporting documents</strong><small>Files inside the board folder that are not in a column — never counted as task cards.</small></header>
     {overflow.map((card) => <button key={card.id} type="button" data-card-id={card.id} aria-pressed={previewId===card.id} aria-describedby="board-card-help" className={'board-card supporting' + (previewId === card.id ? ' selected' : '')} onClick={() => selectCard(card.id)} onDoubleClick={() => onOpenDoc(card.id)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();onOpenDoc(card.id)}}} title={card.path}><span className="board-card-title">{card.title}</span><span className="board-card-path">{card.path}</span></button>)}
-   </section>}
-   </div>
+    </section>}
+    <CanvasNavigation defaultOpen={minimapDefault} label="Board navigation" panMode={handMode} onTogglePan={()=>setHandMode(mode=>!mode)} zoom={boardZoom} minZoom={BOARD_ZOOM_MIN} maxZoom={BOARD_ZOOM_MAX} disabledFit={!columns.length}
+     onZoomIn={()=>zoomBoard(boardZoomStep(boardZoom,1.2))} onZoomOut={()=>zoomBoard(boardZoomStep(boardZoom,1/1.2))}
+     onReset={()=>zoomBoard(1)} onFit={fitBoard} overview={boardOverview??undefined}/>
+    </div>
    {previewId&&<aside className="board-preview" aria-label="Task preview">
     <div className="board-preview-resizer" role="separator" tabIndex={0} aria-label="Resize task preview" aria-orientation={narrow?'horizontal':'vertical'} aria-valuemin={Math.round(narrow?minHeight:minWidth)} aria-valuemax={narrow?75:60} aria-valuenow={Math.round(narrow?effectiveHeight:effectiveWidth)}
      onKeyDown={e=>{const increase=narrow?'ArrowUp':'ArrowLeft',decrease=narrow?'ArrowDown':'ArrowRight';if(![increase,decrease,'Home','End'].includes(e.key))return;e.preventDefault();changeSize(e.key==='Home'?(narrow?minHeight:minWidth):e.key==='End'?(narrow?75:60):(narrow?effectiveHeight:effectiveWidth)+(e.key===increase?1:-1)*(narrow?5:2))}}

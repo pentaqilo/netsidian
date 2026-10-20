@@ -11,7 +11,7 @@ export const graph2Visualizations:{id:Graph2Visualization;title:string;descripti
  {id:'silk',title:'Silk',description:'Flowing gradient ribbons and luminous topic landscapes'},
 ];
 export interface Graph2Settings {layout:'atlas'|'links';groupBy:'folder'|'smart';bundle:boolean;visualization:Graph2Visualization;motion:boolean;folder:string;tag:string;filter:string;orphans:boolean;unresolved:boolean;tags:boolean;colorBy:'folder'|'tag'|'none';nodeSize:number;linkWidth:number;labels:number;repel:number;distance:number;arrows:boolean}
-export const defaultGraph2Settings:Graph2Settings={layout:'atlas',groupBy:'folder',bundle:true,visualization:'nebula',motion:true,folder:'',tag:'',filter:'',orphans:true,unresolved:false,tags:false,colorBy:'folder',nodeSize:1,linkWidth:1,labels:1,repel:180,distance:90,arrows:false};
+export const defaultGraph2Settings:Graph2Settings={layout:'links',groupBy:'folder',bundle:true,visualization:'nebula',motion:true,folder:'',tag:'',filter:'',orphans:true,unresolved:false,tags:false,colorBy:'folder',nodeSize:1,linkWidth:1,labels:1,repel:180,distance:90,arrows:false};
 export const graphPalette=['#b7a4ed','#77bec9','#91bd9a','#e0b480','#ce95b0','#96aee0','#c8bf83','#9ebfc1'];
 export function folderOf(path:string){const i=path.lastIndexOf('/');return i<0?'':path.slice(0,i)}
 // Small, predictable subset of Obsidian-style search: quoted phrases,

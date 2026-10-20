@@ -39,7 +39,7 @@ func (s *Services) GetSettings(ctx context.Context) (*Settings, error) {
 }
 
 // Version is the build version reported to clients.
-const Version = "0.1.0"
+const Version = "0.3.0"
 
 // ---------- preferences ----------
 

@@ -36,3 +36,13 @@ describe('graph gesture ownership',()=>{
   gesture('gestureend',1.5);unbind();
  });
 });
+
+it('leaves native scrolling and pinch in editable children to the editor',()=>{
+ const surface=document.createElement('div'),editor=document.createElement('div');editor.className='inline-editor';surface.append(editor);document.body.append(surface);
+ const zoom=vi.fn(),unbind=bindGraphZoom(surface,zoom,target=>target instanceof Element&&!!target.closest('.inline-editor'));
+ const wheel=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:100});editor.dispatchEvent(wheel);
+ expect(wheel.defaultPrevented).toBe(false);expect(zoom).not.toHaveBeenCalled();
+ const pinch=new Event('gesturestart',{bubbles:true,cancelable:true});editor.dispatchEvent(pinch);
+ expect(pinch.defaultPrevented).toBe(false);
+ unbind();surface.remove();
+});

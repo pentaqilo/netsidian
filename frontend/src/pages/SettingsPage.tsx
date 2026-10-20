@@ -12,13 +12,13 @@ import {MCPSetup} from '../components/MCPSetup';
 const errText = (e: unknown) =>
   e instanceof api.ApiError ? `${e.code}: ${e.message}` : String(e);
 
-export default function SettingsPage({appearance,initialVault,agentRequest=0,onAgentOpened,accountRequest=0,onAccountOpened}:{appearance?:ReactNode;initialVault?:string;agentRequest?:number;onAgentOpened?:()=>void;accountRequest?:number;onAccountOpened?:()=>void}) {
+export default function SettingsPage({appearance,interaction,initialVault,agentRequest=0,onAgentOpened,accountRequest=0,onAccountOpened}:{appearance?:ReactNode;interaction?:ReactNode;initialVault?:string;agentRequest?:number;onAgentOpened?:()=>void;accountRequest?:number;onAccountOpened?:()=>void}) {
  const [section,setSection]=useState(()=>location.pathname.endsWith('/settings/mcp')?'agents':localStorage.getItem("netsidian.settings.section")||"account");
  useEffect(()=>{if(location.pathname.endsWith('/settings/mcp'))setSection('agents')},[location.pathname]);
   const { me, settings, spaces, refresh } = useApp();
   useEffect(()=>{if(accountRequest){setSection("account");localStorage.setItem("netsidian.settings.section","account");onAccountOpened?.()}},[accountRequest]);
 
-  useEffect(()=>{const allowed=['account','ui','storage','agents',...(me?.isOperator?['system',...(settings?.authMode==='none'?[]:['users'])]:[])];if(!allowed.includes(section))setSection('account')},[section,me?.isOperator,settings?.authMode]);
+  useEffect(()=>{const allowed=['account','ui',...(interaction?['interaction']:[]),'storage','agents',...(me?.isOperator?['system',...(settings?.authMode==='none'?[]:['users'])]:[])];if(!allowed.includes(section))setSection('account')},[section,me?.isOperator,settings?.authMode]);
   const [keyError,setKeyError]=useState('');
   const [keys, setKeys] = useState<KeyRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -166,9 +166,10 @@ export default function SettingsPage({appearance,initialVault,agentRequest=0,onA
       {error && <div className="banner error">{error}</div>}
 
       <div className="settings-tabs" role="tablist" aria-label="Settings sections" onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]'));const i=tabs.indexOf(document.activeElement as HTMLButtonElement);const n=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;tabs[n].click();tabs[n].focus()}}>
- {(['account','ui','storage','agents',...(me?.isOperator?['system',...(settings?.authMode==='none'?[]:['users'])]:[])]).map(id=><button className="btn" key={id} id={'settings-tab-'+id} role="tab" aria-selected={section===id} aria-controls={'settings-panel-'+id} tabIndex={section===id?0:-1} onClick={()=>{setSection(id);localStorage.setItem('netsidian.settings.section',id)}}>{id==='ui'?'Appearance':id==='agents'?'MCP & agents':id[0].toUpperCase()+id.slice(1)}</button>)}
+ {(['account','ui',...(interaction?['interaction']:[]),'storage','agents',...(me?.isOperator?['system',...(settings?.authMode==='none'?[]:['users'])]:[])]).map(id=><button className="btn" key={id} id={'settings-tab-'+id} role="tab" aria-selected={section===id} aria-controls={'settings-panel-'+id} tabIndex={section===id?0:-1} onClick={()=>{setSection(id);localStorage.setItem('netsidian.settings.section',id)}}>{id==='ui'?'Appearance':id==='agents'?'MCP & agents':id[0].toUpperCase()+id.slice(1)}</button>)}
  </div>
  <section id="settings-panel-ui" role="tabpanel" aria-labelledby="settings-tab-ui" hidden={section!=='ui'}>{appearance}</section>
+ <section id="settings-panel-interaction" role="tabpanel" aria-labelledby="settings-tab-interaction" hidden={section!=='interaction'}>{interaction}</section>
  <section id="settings-panel-account" role="tabpanel" aria-labelledby="settings-tab-account" hidden={section!=='account'}>
  <h3>Account</h3>
        <table className="data">

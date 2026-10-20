@@ -1,0 +1,15 @@
+.canvas-navigation{position:absolute;right:16px;bottom:16px;z-index:6;display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:calc(100% - 24px);cursor:default;user-select:none}
+.canvas-navigation-bar{display:flex;align-items:center;gap:2px;padding:4px;background:var(--bg-raised);border:1px solid var(--border);border-radius:10px;box-shadow:0 3px 16px #0002}
+.canvas-navigation-bar>.tool{width:32px;height:32px;min-width:32px;min-height:32px;flex-shrink:0}
+.canvas-navigation-zoom{border:0;background:none;color:var(--text);font:inherit;font-size:11px;min-width:48px;height:32px;border-radius:5px;font-variant-numeric:tabular-nums;cursor:pointer}
+.canvas-navigation-zoom:hover{background:var(--bg-hover)}
+.canvas-navigation-bar>span{height:18px;border-left:1px solid var(--border);margin:0 4px}
+.canvas-minimap{width:220px;max-width:100%;background:var(--bg-raised);border:1px solid var(--border);border-radius:10px;box-shadow:0 3px 18px #0002;overflow:hidden}
+.canvas-minimap>header{display:flex;align-items:center;justify-content:space-between;padding:6px 9px;font-size:11px;color:var(--text-dim);border-bottom:1px solid var(--border)}
+.canvas-minimap>header>button{display:grid;place-items:center;border:0;background:none;color:var(--text-dim);cursor:pointer;width:26px;height:24px;border-radius:4px}
+.canvas-minimap>header>button:hover{background:var(--bg-hover);color:var(--text)}
+.canvas-minimap>svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair;background:var(--bg)}
+.canvas-minimap>svg:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.canvas-minimap-item{fill-opacity:.65}.canvas-minimap-viewport{fill:var(--accent);fill-opacity:.09;stroke:var(--accent);stroke-width:1.5}
+.canvas-minimap>small{display:block;padding:5px 8px;border-top:1px solid var(--border);font-size:9px;color:var(--text-dim);text-align:center}
+@media(max-width:700px){.canvas-navigation{right:10px;bottom:10px}.canvas-navigation-bar>.tool{width:36px;height:36px;min-width:36px;min-height:36px}.canvas-navigation-zoom{height:36px}.canvas-minimap{width:200px}}

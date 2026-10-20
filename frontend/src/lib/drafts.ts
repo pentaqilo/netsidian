@@ -40,6 +40,20 @@ export class Draft {
 }
 
 export interface DraftDocument {draft:Draft;note:NoteContent}
+// Structural subset the Visual editor needs. The composer uses a lightweight
+// local draft (no server autosave) while the document tabs use full Drafts.
+export type DraftLike = Pick<Draft, 'text' | 'canEdit' | 'status' | 'error' | 'change' | 'subscribe'>;
+export interface LocalDraft extends DraftLike { emit: () => void; }
+export function localDraft(text: string, canEdit: boolean, onChange: (text: string) => void): LocalDraft {
+  const listeners = new Set<() => void>();
+  const draft: LocalDraft = {
+    text, canEdit, status: 'saved', error: '',
+    change: (next: string) => { if (!draft.canEdit) return; draft.text = next; draft.status = 'unsaved'; onChange(next); },
+    subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; },
+    emit: () => { listeners.forEach((fn) => fn()); },
+  };
+  return draft;
+}
 // Both the document tab and task pane use this loader. Coalescing reads and
 // rechecking the cache after a read guarantees one save controller per file.
 const sharedLoads=new WeakMap<Map<string,Draft>,Map<string,Promise<DraftDocument>>>();

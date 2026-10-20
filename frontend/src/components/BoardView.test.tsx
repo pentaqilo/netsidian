@@ -30,3 +30,18 @@ it('ignores an obsolete preview response',async()=>{await mount();let resolve!:(
 it('keyboard resize respects bounds and persists scoped size',async()=>{await mount();await selectFirst();const sep=host.querySelector('[role="separator"]')!;await key(sep,'End');expect(sep.getAttribute('aria-valuenow')).toBe('60');expect(localStorage.getItem('netsidian:task-pane:alice:vault:Tasks:width')).toBe('60');await key(sep,'Home');await key(sep,'ArrowRight');expect(sep.getAttribute('aria-valuenow')).toBe('20')});
 it('viewers have readonly previews',async()=>{vi.mocked(api.getDocument).mockImplementation(async(_s,id)=>({...note(id),canEdit:false}));await mount(false);await selectFirst();expect(host.querySelector('textarea')?.readOnly).toBe(true);expect(host.querySelector('.board-preview-header')?.textContent).toContain('Read only');await click(close());expect(api.saveContent).not.toHaveBeenCalled()});
 it('retains dirty drafts if a task leaves the board',async()=>{await mount();await selectFirst();const d=cache.get('vault/First')!;await act(async()=>d.change('Keep me'));vi.mocked(api.getBoard).mockResolvedValue({...board,columns:[{...board.columns[0],cards:[card('Second')]}]});await mount(true,1);expect(host.querySelector('.board-preview')).not.toBeNull();expect(d.text).toBe('Keep me');expect(host.querySelector('.board-preview')?.textContent).toContain('no longer on the board')});
+it('board navigation zooms, resets and opens a column minimap without touching cards',async()=>{
+  await mount();
+  const bar=host.querySelector('.canvas-navigation-bar');expect(bar?.getAttribute('aria-label')).toBe('Board navigation');
+  expect(host.querySelector('[aria-label="Fit canvas to content"]')).not.toBeNull();
+  const cols=host.querySelector<HTMLElement>('.board-columns')!;const zoomVar=()=>parseFloat(cols.style.getPropertyValue('--board-zoom')||'1');
+  expect(zoomVar()).toBeCloseTo(1);
+  await click(host.querySelector('[aria-label="Zoom in"]')!);expect(zoomVar()).toBeCloseTo(1.2);
+  await click(host.querySelector('[aria-label="Zoom out"]')!);expect(zoomVar()).toBeCloseTo(1);
+  await click(host.querySelector('[aria-label="Zoom in"]')!);await click(host.querySelector('[aria-label="Reset zoom to 100%"]')!);expect(zoomVar()).toBeCloseTo(1);
+  const toggle=host.querySelector<HTMLButtonElement>('[aria-label="Show minimap"]')!;expect(toggle.disabled).toBe(false);
+  await click(toggle);expect(host.querySelector('.canvas-minimap')).not.toBeNull();expect(host.querySelector('.canvas-minimap-item')).not.toBeNull();
+  await click(host.querySelector('[aria-label="Hide minimap"]')!);expect(host.querySelector('.canvas-minimap')).toBeNull();
+  // navigation never mutates task state
+  expect(api.saveContent).not.toHaveBeenCalled();expect(host.querySelectorAll('[data-card-id]')).toHaveLength(2);
+});

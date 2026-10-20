@@ -1,28 +1,49 @@
 # Mind maps
 
 Mind maps give ordinary vault documents a spatial view. Open **Maps** in the
-left ribbon, choose **Create mind map**, and add your first idea. Each map is a
-folder containing `mindmap.md`; its canvas starts blank.
+left ribbon, choose **Create map**, and add your first idea. Each map is a
+folder containing `mindmap.md`; its canvas starts blank. The Maps list uses compact, keyboard-accessible tiles: click a tile or focus it and press Enter/Space to open it. A map icon identifies the tool, while the node and connector counts describe its contents; no invented topology is shown. Existing folder names are preserved. The list groups maps by their parent folder and offers search and a folder filter; each tile shows the latest document activity inside its folder. The file explorer's **⊕** menu can also create a map in a chosen folder, and map folders and their `mindmap.md` files carry an **Open map** quick button.
+
+The canvas uses a quiet dotted background that follows pan and zoom. **Arrange branches** has its own branching-layout icon, distinct from the graph view.
 
 ## Working on a canvas
 
 - Add ideas with **Add node** or by double-clicking empty space. Each new idea
   creates an ordinary Markdown note in the map folder.
-- Select an idea to edit its document in the resizable Visual Markdown preview.
-  Double-click, or press Enter on a focused idea, to open its document tab.
+- Single-click a card header/frame to select it. Double-click the header/frame,
+  or press Space on a focused card, to open its editable side preview. Selecting
+  another card does not switch the preview. Enter or **Open document** in the
+  card menu opens the full document tab.
+- Opening, switching, resizing or closing the preview preserves canvas zoom.
+  Only an obscured previewed card causes a minimal pan into the uncovered
+  canvas; already-visible cards leave the camera untouched. Oversized cards
+  keep their header visible without zooming out. Fit is an explicit action.
 - Drag cards to arrange them. Scroll or pinch to zoom, drag empty space to pan,
-  and use **Fit canvas to content** to return to your ideas.
+  and use the floating navigation panel at the bottom-right to zoom in/out,
+  reset to 100%, or **Fit canvas to content**. Controls stay visible beside an
+  open document preview and work in read-only maps. Use **Show minimap** for
+  click/drag navigation and a visible viewport outline. See [canvas navigation](canvas-navigation.md).
 - Press Tab on a focused idea to create a connected child, or Shift+Tab for a
   sibling. Arrows navigate ideas; Alt+arrows move one by keyboard. Escape leaves
   the canvas interaction. Ordinary Tab navigation remains available in controls.
 - Hover or focus a card to reveal connection points. Drag a point to another
   card, or release on empty canvas to create a connected idea there. Click a
-  point then a destination for click-to-connect; Escape cancels.
-- Resize a card with its bottom-right grip (arrow keys also work). Expanded
-  cards show a rendered Markdown mini preview; linked files appear as title chips.
+  point then a destination for click-to-connect; Escape cancels. Starting or
+  canceling a connection never shifts, refits or pans the canvas.
+- Resize a card with its bottom-right diagonal corner grip (arrow keys also
+  work, and the grip stays live while the card's text is being edited inline).
+  Expanded cards show a rendered Markdown mini preview; linked files appear as
+  title chips. Editing a node's document in the preview updates its mini
+  preview promptly.
 - Use **Connect selected idea**, then select the destination idea. The node's
-  ellipsis menu also provides this action. Select a connector on the canvas or
-  through **Connections** to edit its label, make it dashed, or remove it.
+  ellipsis menu also provides this action. Select a connector by clicking its
+  line (the hit area stays generous at any zoom) or by pressing Tab to reach
+  the connector — each line is a focusable control labelled with its two
+  ideas — and pressing Enter or Space, to edit its label, make it dashed, or
+  remove it. Drag a selected connector's
+  endpoint handles, or use **Move start**/**Move end**, to reconnect it to
+  another idea while keeping its label; Escape cancels. Delete/Backspace
+  removes only the selected connector, never its linked documents.
 - **Arrange branches** spaces rows and levels using the current card dimensions. Undo/redo restores
   canvas edits, including arrangement, sizes, colors and connectors. It does not undo
   document edits or physical file operations; those use document history/trash.
@@ -114,3 +135,18 @@ on multiple boards. A drawn arrow does not automatically become a global
 semantic relationship. Add a normal Markdown link for that relationship.
 Folder-backed visual groups are deferred; no automatic file moves are introduced.
 See [interaction decisions and research](mindmap-ux.md) for the tradeoffs.
+
+
+### Edit text on the map
+
+Double-click a card's rendered body, click its pencil button, or focus the card and press **F2**. Type directly inside the card: the inline editor has no formatting toolbar and no Done button, and the card keeps its saved size while editing — the editor simply fills the card body's space with the same typography as the rendered preview, so nothing jumps. **Escape** or **Ctrl/Cmd+Enter** saves and returns to the card; clicking outside the editor also finishes editing and saves the latest text (the link picker, save-error controls and the resize grip never close it early). The bottom-right corner grip keeps resizing the card during editing, by drag or arrow keys, without closing the editor or losing the caret. A save failure keeps your draft and editor available with retry, resolve and export. The same Markdown file and shared autosave draft are used by the document tab and side preview. To edit raw Markdown, double-click the card header to open its preview and use **Source** there.
+
+Dragging a node or connection near an edge automatically pans the canvas, faster as the pointer approaches the edge. Keep the pointer near the edge to continue; release to finish, or press **Escape** to cancel the move. Zoom and minimap navigation remain available in the navigation panel.
+
+Map cards use 16px titles and 15px Markdown body text before canvas zoom, with
+matching inline-editor typography. Resizing a card reveals more content without
+changing its document or the camera scale.
+
+The preview gesture, inline editing and initial minimap visibility are adjustable
+in [Settings → Interaction](interaction-preferences.md). The descriptions above
+use the default gestures.

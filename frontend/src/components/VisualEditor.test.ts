@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {Schema} from 'prosemirror-model';
 import type {Node} from 'prosemirror-model';
 import {EditorState,TextSelection} from 'prosemirror-state';
-import {visualSafe,prepareVisual,computeUi,linkHrefAllowed,toggleTaskList,moveBlock,convertList,insertMarkdownTable} from './VisualEditor';
+import {hashtagDecorations,visualSafe,prepareVisual,computeUi,linkHrefAllowed,toggleTaskList,moveBlock,convertList,insertMarkdownTable} from './VisualEditor';
 
 describe('Visual editor source safety gate',()=>{
  it('allows basic Markdown and fenced code',()=>{
@@ -34,7 +34,7 @@ describe('Visual editor protected Obsidian syntax',()=>{
   expect(prepared.markdown).toContain('[alias](#netsidian-protected-0)');
   expect(prepared.restore(prepared.markdown)).toBe(source);
   expect(prepared.restore(prepared.markdown.replace('# Title','# Edited'))).toContain('# Edited');
-  expect(prepared.restore(prepared.markdown.replace('alias','changed'))).toBeNull();
+  expect(prepared.restore(prepared.markdown.replace('alias','changed'))).toContain('[[Other Note|changed]]');
  });
  it('keeps source-only constructs as protected islands while editing other paragraphs',()=>{
   const source='---\nkind: note\n---\n# Title\n\n> [!note] Keep me\n\nEditable text.\n';
@@ -150,3 +150,43 @@ describe('visual document link insertion',()=>{
  it('protects empty frontmatter and does not treat body separators as metadata',()=>{for(const source of ['---\n---\nBody','# Title\n\n---\n\nBody\n\n---\n']){const p=prepareVisual(source);expect(p.restore(p.markdown)).toBe(source)}});
  it('restores a newly inserted link as an indexed wikilink alongside existing frontmatter',()=>{const p=prepareVisual('---\ntags: [work]\n---\nBody');const link=p.addWiki('/Projects/Research','Research notes');expect(p.restore(p.markdown+'\n\n['+link.label+']('+link.href+')')).toContain('[[/Projects/Research|Research notes]]');expect(p.restore(p.markdown+'\n\n['+link.label+']('+link.href+')')).toContain('tags: [work]')});
 });
+
+
+describe('live memo hashtag decorations',()=>{
+ const schema=new Schema({nodes:{doc:{content:'block+'},paragraph:{content:'inline*',group:'block'},code_block:{content:'text*',group:'block',code:true},text:{group:'inline'}},marks:{strong:{},code:{code:true},link:{attrs:{href:{default:'/target'}}}}});
+ const paragraph=(...text:Node[])=>schema.node('paragraph',null,text);
+ const decorations=(doc:Node)=>hashtagDecorations(doc).find().map(d=>({from:d.from,to:d.to,text:doc.textBetween(d.from,d.to)}));
+ it('styles prose and formatted nested/unicode tags without changing document content',()=>{
+  const doc=schema.node('doc',null,[paragraph(schema.text('Ideas #pro'),schema.text('ject/api',[schema.mark('strong')]),schema.text(' (#żółć) #123 #two'))]);
+  const original=doc.toJSON(),result=decorations(doc);
+  expect(result.map(d=>d.text)).toEqual(['#project/api','#żółć','#two']);expect(doc.toJSON()).toEqual(original);
+ });
+ it('leaves code blocks, inline code, linked text, and non-tag hashes untouched',()=>{
+  const doc=schema.node('doc',null,[paragraph(schema.text('#code',[schema.mark('code')]),schema.text(' '),schema.text('#link',[schema.mark('link')]),schema.text(' name@example.com#part #123 #valid')),schema.node('code_block',null,schema.text('#not-a-tag'))]);
+  expect(decorations(doc).map(d=>d.text)).toEqual(['#valid']);
+ });
+ it('updates ranges for an in-progress tag without serializing text or moving selection',()=>{
+  const doc=schema.node('doc',null,[paragraph(schema.text('A #ide'))]);
+  const state=EditorState.create({schema,doc,selection:TextSelection.create(doc,7)}),next=state.apply(state.tr.insertText('a'));
+  expect(decorations(doc).map(d=>d.text)).toEqual(['#ide']);expect(decorations(next.doc).map(d=>d.text)).toEqual(['#idea']);
+  const before=next.selection;hashtagDecorations(next.doc);expect(next.selection).toBe(before);
+ });
+});
+
+
+it('allows normal vault-link editing and removal without protected-link false alarms',()=>{
+ const p=prepareVisual('---\ntags: [memo]\n---\nRead [[Target|Alias]].');
+ expect(p.restore(p.markdown.replace('Alias','New label'))).toBe('---\ntags: [memo]\n---\nRead [[Target|New label]].');
+ expect(p.restore('Read something else.')).toBe('---\ntags: [memo]\n---\nRead something else.');
+ expect(p.restore(p.markdown+' '+p.markdown)).toContain('[[Target|Alias]]');
+ expect(p.restore('[Unknown](#netsidian-protected-999)')).toBeNull();
+});
+it('does not turn an ordinary memo line ending in a space into an opaque source island',()=>{
+ const p=prepareVisual('A normal memo #idea ');
+ expect(p.markdown).not.toContain('Source syntax');expect(p.restore('A changed memo #idea')).toBe('A changed memo #idea');
+});
+it('hides map metadata in visual editing and preserves it with frontmatter on save',()=>{
+ const block='<!-- netsidian:mindmap-links -->\n- [Idea](/Idea.md)\n<!-- /netsidian:mindmap-links -->\n',source='---\ntitle: Map\n---\nBody\n'+block,p=prepareVisual(source);
+ expect(p.markdown).not.toContain('netsidian:mindmap');expect(p.markdown).not.toContain('Source syntax');expect(p.restore(p.markdown)).toBe(source);expect(p.restore(p.markdown.replace('Body','Edited'))).toContain(block);expect(p.restore(p.markdown.replace('Body','Edited'))).toContain('title: Map');
+});
+it('allows writing about internal marker names inside code',()=>{const source='`#netsidian-protected-99`\n\nBody',p=prepareVisual(source);expect(p.restore(p.markdown.replace('Body','Edited'))).toContain('Edited')});

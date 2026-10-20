@@ -10,3 +10,8 @@ it('renders inline and display math while leaving dollar amounts literal',()=>{c
 it('keeps math syntax literal inside code spans and fences',()=>{const el=document.createElement('div');renderInto(el,'`$x$` and\n\n```\n$y$\n```',makeResolver([]),()=>{});expect(el.querySelector('code')?.textContent).toBe('$x$');expect(el.querySelector('.math')).toBeNull()});
 it('renders footnote sections with definitions',()=>{const el=document.createElement('div');renderInto(el,'Fact[^a]\n\n[^a]: source here',makeResolver([]),()=>{});expect(el.querySelector('.footnotes')).not.toBeNull();expect(el.textContent).toContain('source here')});
 it('missing links keep their full target independently of the alias and offer an action',()=>{const el=document.createElement('div'),handler=vi.fn();window.addEventListener('netsidian:missing-link',handler);renderInto(el,'[[Future/Idea#Plan|Friendly alias]]',makeResolver([]),()=>{});el.querySelector('a')?.click();expect(handler.mock.calls[0][0].detail.target).toBe('Future/Idea#Plan');window.removeEventListener('netsidian:missing-link',handler)});
+it('hides internal map membership blocks in reading views but keeps code examples visible',()=>{
+ const block='<!-- netsidian:mindmap-links -->\n- [Secret bookkeeping](/Idea.md)\n<!-- /netsidian:mindmap-links -->\n',el=document.createElement('div');
+ renderInto(el,'Visible prose\n\n'+block,makeResolver([]),()=>{});expect(el.textContent).toContain('Visible prose');expect(el.textContent).not.toContain('netsidian:');expect(el.textContent).not.toContain('Secret bookkeeping');
+ renderInto(el,'```md\n'+block+'```',makeResolver([]),()=>{});expect(el.querySelector('code')?.textContent).toContain(block);
+});

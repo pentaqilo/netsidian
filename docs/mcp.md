@@ -1,5 +1,9 @@
 # Netsidian MCP
 
+For the knowledge-database and project-state design review, see
+[MCP for knowledge and project work](mcp-agent-workflows.md). Proposed tools in that
+document are not part of the current tool contract below.
+
 ## Connect
 
 The same Netsidian deployment serves Streamable HTTP at `/mcp`. On the login

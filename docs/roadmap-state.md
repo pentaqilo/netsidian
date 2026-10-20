@@ -25,7 +25,14 @@ Updated: 2026-10-21. Target release: Netsidian 0.3.0.
 
 ## Release
 
-- Target: 0.3.0. Production-container smoke test passed. GitHub publication pending.
+- Published: [Netsidian 0.3.0](https://github.com/pentaqilo/netsidian/releases/tag/0.3.0).
+- Release commit: `096b47c8` (merged and pushed to `main`).
+- [GitHub release workflow](https://github.com/pentaqilo/netsidian/actions/runs/39505626373): completed successfully.
+- Four desktop archives, Helm chart, `docker-image.txt` and `SHA256SUMS` published.
+- Docker: `ghcr.io/pentaqilo/netsidian:0.3.0`, multi-platform digest
+  `sha256:15522a8f3d2b7931645c6fe612a93195a58e8a28908aa873c026f7ec542a3599`.
+- Public checksum and image-digest files downloaded and verified as available.
+- Production-container smoke test passed; no implementation/release blockers remain.
 
 ## MCP design backlog
 
@@ -52,3 +59,12 @@ Review endpoint: http://127.0.0.1:3010. Existing review data volume retained.
 
 Release notes: `.github/release-notes/0.3.0.md`. GitHub publication uses the
 repository's tag-triggered desktop/Docker/Helm workflow.
+
+## Delegation and review
+
+OpenCode used its configured default agent and reported
+`qwen3.8-flash-next-iq3_xxs`. Codex independently reviewed the delegated changes,
+completed integration and fixed metadata/code-example preservation, preference
+write ordering, exact configuration-file matching, folder action spacing,
+chronological activity dates and default minimaps in retained hidden tabs.
+The temporary Vite process was stopped after production Docker validation.

@@ -164,19 +164,23 @@ Release automation runs on version tags such as `0.2.0`. It publishes the GitHub
 
 ### Markdown document view
 
-![Markdown document view with file navigation, tags, and tables](docs/screenshots/document-view.png)
+![Markdown reading mode with file navigation, a checklist and a blockquote](docs/screenshots/document-view.png)
 
 ### Memos timeline
 
-![Memos timeline with tags and document linking](docs/screenshots/memos.png)
+![Compact Memos timeline with a visual composer, live tags and a calendar on the left](docs/screenshots/memos.png)
 
 ### Kanban boards with task previews
 
 ![Kanban board with task columns and an editable, resizable task preview](docs/screenshots/kanban.png)
 
-### Mind maps with resizable Markdown cards
+### Mind maps with Markdown cards and canvas navigation
 
-![Mind map with rendered Markdown cards, linked files and border connectors](docs/screenshots/mindmap.png)
+![Mind map with rendered Markdown cards, a linked research note, border connectors, zoom controls and a minimap toggle](docs/screenshots/mindmap.png)
+
+### MCP and agent access
+
+![MCP settings with connection instructions, vault selection and scoped token permissions; no tokens are displayed](docs/screenshots/mcp-agents.png)
 
 ### PDF document tabs with Markdown conversion
 

@@ -148,3 +148,32 @@ Release validation passed: 378 frontend tests (44 files), complete backend tests
 server vet, strict Helm lint and diff whitespace checks. Production frontend
 build and Docker review smoke checks passed before the metadata version bump.
 Publication uses the existing Release workflow triggered by tag 0.4.0.
+
+### Published 0.4.0
+
+- Published: https://github.com/pentaqilo/netsidian/releases/tag/0.4.0.
+- Release commit/tag: 8699d44 / 0.4.0, pushed to main and GitHub.
+- Workflow 39680936443 succeeded: four desktop targets, Helm, multi-platform
+  Docker and release publication. All seven expected assets are present.
+- SHA256SUMS entries match GitHub's asset digests; the downloaded checksum
+  manifest and Docker digest file were independently verified.
+- Docker: ghcr.io/pentaqilo/netsidian:0.4.0, immutable multi-platform digest
+  sha256:4090c7e5e8bfd9865d98cf5b4f8fd3fcf7d26de28127acd1792949601bcfe445.
+- Screenshot refresh requested after publication is a separate documentation
+  follow-up; the published 0.4.0 tag is retained unchanged.
+
+### Screenshot follow-up
+
+- Refreshed README appearance, document reading mode, Memos, Kanban preview and
+  map screenshots; added MCP/agent settings. Six real 1440x1000 captures from
+  published 0.4.0, with accurate captions and all 11 README image links checked.
+- OpenCode's initial attempt was stopped after excessive graph framing; the
+  screenshot subagent completed captures and root independently reviewed images,
+  catching and correcting a transient Memos loading state before publication.
+- Automatic approval rejected creating a persistent demonstration vault in the
+  shared review instance. The approved safer alternative used isolated tmpfs
+  test data in a temporary Docker container; container/data were removed after
+  capture. Shared review content was retained; scratch files were removed.
+- Published 0.4.0 image now runs on the retained local review container at
+  http://127.0.0.1:3010. The screenshot documentation follow-up does not move or
+  replace release tag 0.4.0.

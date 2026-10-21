@@ -57,7 +57,7 @@ export default function Graph2({space,root,onOpen,epoch=0,minimapDefault=false}:
  useEffect(()=>{if(scene&&engine.current)engine.current.setScene(scene,settings)},[scene,key,settings.layout]);
  useEffect(()=>{if(displayScene)engine.current?.setDisplay(settings,displayScene.color)},[settings.bundle,settings.visualization,settings.motion,settings.colorBy,settings.nodeSize,settings.linkWidth,settings.labels,settings.repel,settings.distance,settings.arrows,displayScene]);
  useEffect(()=>{let active=true;setPreview(null);setPreviewError('');if(previewOpen&&!controls&&selectedNode?.kind==='document')api.getDocument(space,selected).then(n=>{if(active)setPreview(n)}).catch(e=>{if(active)setPreviewError(String(e))});return()=>{active=false}},[space,selected,epoch,selectedNode?.kind,previewOpen,controls]);
- useEffect(()=>{if(!preview&&previewHost.current)previewHost.current.replaceChildren();if(preview&&previewHost.current)renderInto(previewHost.current,preview.markdown,makeResolver((data?.nodes||[]).map(n=>n.path),preview.path),path=>{const n=data?.nodes.find(n=>n.path===path);if(n)onOpen(n.id)})},[preview,data]);
+ useEffect(()=>{if(!preview&&previewHost.current)previewHost.current.replaceChildren();if(preview&&previewHost.current)renderInto(previewHost.current,preview.markdown,makeResolver((data?.nodes||[]).map(n=>n.path),preview.path,[],data?.nodes||[]),path=>{const n=data?.nodes.find(n=>n.path===path);if(n)onOpen(n.id)})},[preview,data]);
  const realLinkCount=scene?.edges.filter(e=>!e.source.startsWith('tag:')&&!e.target.startsWith('tag:')).length||0;
  const roots=regions.filter(r=>!r.parent);
  const active=regions.find(r=>r.id===activeRegion)||(root?regions.find(r=>!r.parent&&r.ids.includes(root)):undefined);

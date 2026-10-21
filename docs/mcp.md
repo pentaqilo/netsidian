@@ -266,3 +266,15 @@ writing. Details and index are individually journaled document saves, not a sing
 multi-document transaction; a failure may leave a detail file without its index
 link. Inspect reported conflicts rather than blindly retrying with a new key.
 No automatic migration or deletion of existing memory notes occurs.
+
+### Internal memory links (follow-up)
+
+Memory detail/refs use stable document IDs. Wiki links such as `[[doc_...]]`
+resolve against the currently accessible vault's document metadata and open inside
+Netsidian, including after a rename or move. Reading views also recognize legacy
+bare IDs in JSON memory entry `detail`/`refs` fields without rewriting the source.
+Names and local repository paths inside `text` remain ordinary text. Missing IDs
+are marked missing and never redirect to a different same-named document.
+Graph/backlink indexing recognizes the same references; startup reindexing repairs
+existing derived indexes. This does not grant cross-vault access or turn local
+filesystem paths into external links.

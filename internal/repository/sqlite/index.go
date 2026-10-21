@@ -5,12 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/pentaqilo/netsidian/internal/domain"
 	"github.com/pentaqilo/netsidian/internal/ports"
 )
+
+var stableDocumentIDPattern = regexp.MustCompile(`^doc_[a-z0-9]{26}$`)
 
 // ReplaceDocumentIndex rewrites all derived rows for one document.
 // Jobs call this with the generation they indexed; a stale job overwriting
@@ -63,6 +66,7 @@ func replaceDocumentIndexTx(ctx context.Context, tx *sql.Tx, spaceID string, doc
 	type docRef struct{ id, key string }
 	byKey := map[string]docRef{}
 	byBase := map[string][]docRef{}
+	byID := map[string]docRef{}
 	if len(idx.Wikilinks) > 0 && !deferred {
 
 		drows, err := tx.QueryContext(ctx,
@@ -81,6 +85,7 @@ func replaceDocumentIndexTx(ctx context.Context, tx *sql.Tx, spaceID string, doc
 			plain, _, _ := strings.Cut(key, "\x00")
 			ref := docRef{id: id, key: plain}
 			byKey[plain] = ref
+			byID[id] = ref
 			base := plain
 			if i := strings.LastIndex(base, "/"); i >= 0 {
 				base = base[i+1:]
@@ -108,6 +113,11 @@ func replaceDocumentIndexTx(ctx context.Context, tx *sql.Tx, spaceID string, doc
 		switch {
 		case l.IsURL:
 			kind, state = "url", "external"
+		case stableDocumentIDPattern.MatchString(l.Target):
+			kind, targetPath = "id", l.Target
+			if ref, ok := byID[l.Target]; ok {
+				state, resolved = "resolved", ref.id
+			}
 		default:
 			key := targetBase + ".md"
 			for _, key = range linkKeys(l.Target, doc.Path) {
@@ -726,20 +736,28 @@ func (db *DB) ResolveLinks(ctx context.Context, spaceID string) error {
 		if target == "" {
 			target = r.base
 		}
-		for _, key := range linkKeys(target, r.sourcePath) {
-			if id, ok := byKey[key]; ok {
-				state, resolved = "resolved", id
-				break
+		// Stable-ID links (memory refs/details) resolve directly against
+		// live documents and survive renames and moves untouched.
+		if stableDocumentIDPattern.MatchString(target) {
+			if active[target] {
+				state, resolved = "resolved", target
 			}
-		}
-		if resolved == "" && !strings.HasPrefix(target, "/") {
-			switch refs := byBase[r.base]; len(refs) {
-			case 1:
-				state, resolved = "resolved", refs[0]
-			case 0:
-				state = "unresolved"
-			default:
-				state = "ambiguous"
+		} else {
+			for _, key := range linkKeys(target, r.sourcePath) {
+				if id, ok := byKey[key]; ok {
+					state, resolved = "resolved", id
+					break
+				}
+			}
+			if resolved == "" && !strings.HasPrefix(target, "/") {
+				switch refs := byBase[r.base]; len(refs) {
+				case 1:
+					state, resolved = "resolved", refs[0]
+				case 0:
+					state = "unresolved"
+				default:
+					state = "ambiguous"
+				}
 			}
 		}
 		if r.state == state && r.resolved == resolved {

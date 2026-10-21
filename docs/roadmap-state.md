@@ -177,3 +177,23 @@ Publication uses the existing Release workflow triggered by tag 0.4.0.
 - Published 0.4.0 image now runs on the retained local review container at
   http://127.0.0.1:3010. The screenshot documentation follow-up does not move or
   replace release tag 0.4.0.
+
+## Follow-up: internal memory references and project-work proposal
+
+- Branch: fix/memory-internal-links. Fixed stable-ID link resolution in reading
+  surfaces and graph/backlinks, including legacy bare detail/refs IDs without
+  changing saved Markdown. Reading links use current document titles when known.
+- Regression tests reproduce the previous missing backlink and unclickable
+  reference; cover exact source preservation, literal IDs in text/code, rename
+  and missing-ID protection. No real user documents were modified.
+- OpenCode default agent supplied the backend contribution and initial resolver
+  extension; independent integration completed UI metadata wiring and corrected
+  missing-ID fallback and structured-field handling.
+- Analyzed project wiki + board + map workflows in docs/mcp-agent-workflows.md.
+  Proposed project_prepare/context/record, task_create/move and map_link tools
+  reuse current services. These project workflow tools remain a proposal and
+  are not implemented by this memory-link fix.
+- Final validation passed: complete backend suite, server vet, 382 frontend
+  tests across 45 files, production frontend build and git diff --check.
+  The validated memory-link fix is tracked on fix/memory-internal-links;
+  published 0.4.0 and its review container have not been changed by this fix.

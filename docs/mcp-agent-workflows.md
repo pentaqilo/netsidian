@@ -146,3 +146,82 @@ These names supersede the earlier proposed document-tool names in the table
 above. Browse, project/task aggregation, exact-text patching and map-neighborhood
 tools remain future work. Indexed memory stays in ordinary Markdown with linked
 resources; it does not restore the retired dedicated memory workflow.
+
+## Proposed project/work wiki workflow (2026-10-22; not implemented)
+
+When the user asks to persist project documentation or ongoing work, prefer a
+project wiki in an existing authorized vault over a long personal-memory entry.
+The memory index holds a short project pointer; project documents, the board and
+map remain the authoritative sources. Local repository paths are plain context
+metadata, not external URLs or substitutes for internal document links.
+
+A small default project template:
+
+```text
+Projects/VibroTrack/
+  project.md                 # manifest, purpose, entry links
+  Wiki/
+    Context.md               # goals, constraints, architecture and source refs
+    Decisions.md             # decisions with reasons and dates
+    Handover.md              # verified checkpoint, blockers, next steps
+  Work/
+    board.md
+    todo/
+    in-progress/
+    done/
+  Maps/Overview/
+    mindmap.md               # references existing wiki/task files
+```
+
+Create useful documents as needed, not every possible empty folder/page.
+`project.md` contains a versioned project marker and stable document IDs for its
+wiki roles, board configuration and overview map. It is also the landing page;
+a duplicate README or parallel status document is unnecessary. Board column
+folders remain the source of task status. Handover records a dated checkpoint
+and task links, not a second mutable task database. Map nodes reference the same
+files instead of copying their bodies. Semantic map edges are not automatically
+Jira-style task dependencies.
+
+Agent guidance should make persistence routine when authorized: discover/reuse
+an existing project; initialize a small wiki for a new project; put actionable
+multi-step work on its board; add a meaningful overview/architecture map when
+relationships benefit from a diagram. Do not create a board/map for an unrelated
+personal preference, invent project facts or completion, or recreate an existing
+project for each session. Do not create a new vault by default: folders organize
+work, vault membership defines access. Explicit read-only denials must never be
+reported as successful persistence.
+
+Recommended focused additions, staged after the memory-link reliability fix:
+
+| Tool | Responsibility |
+| --- | --- |
+| `netsidian_project_prepare` | Find/adopt/create a project from a named template, returning a small receipt and internal refs. Replay-safe; existing files are not overwritten. |
+| `netsidian_project_context` | Budgeted entry point: purpose, source refs, current board counts, blockers and selected next tasks; optional bounded map neighborhood. No full wiki download. |
+| `netsidian_project_record` | Record a context note, decision or handover in the manifest-selected wiki document, with revision checks and exact append/section rules. |
+| `netsidian_task_create` | Create an ordinary task file in the project's configured board column. |
+| `netsidian_task_move` | Change status via the guarded board move service, using actual column IDs and current revision. |
+| `netsidian_map_link` | Reference existing project documents/tasks and connect them, with safe initial placement and preservation of manually arranged nodes. |
+
+Reuse document/search/memory tools for bodies and targeted retrieval. A paged
+board/task reader and dedicated map-neighborhood tool can follow if the context
+tool's small projections are insufficient; avoid adding a tool per REST route.
+Project context should default to roughly 4–8 KiB of serialized JSON with opt-in
+sections and continuations; mutation receipts should contain IDs/revisions rather
+than echoed documents. Measure the additional tool-schema cost before finalizing
+contracts. Counts use column completion metadata, not the translated column label.
+
+Project provisioning must journal its multi-file progress and reconcile identical
+retries. An interrupted scaffold is reported as partial, not complete; retry must
+reuse already-created files. Concurrent edits require fresh revisions, safe merge
+or an explicit conflict. Link renames/trash and current permissions must be
+rechecked. Implement reusable application services/REST capabilities, with MCP
+as a small typed facade. Existing arbitrary folders need explicit adoption,
+without automatic moves or mass migration.
+
+Suggested acceptance scenario: persist a project, obtain a linked wiki and board,
+record a real decision, create/move a task, link its evidence on a map, then resume
+from a small context response in a fresh agent session. Repeat provisioning,
+rename/trash a referenced document, race an edit and test read-only/cross-vault
+keys. Confirm no duplicate project, no copied task status, no externalized local
+filesystem path and no unbounded context response. This section is a proposal;
+the project/task/map workflow tools listed here do not exist yet.

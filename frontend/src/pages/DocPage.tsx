@@ -93,7 +93,7 @@ export default function DocPage() {
     const el = previewRef.current;
     const d = docRef.current;
     if (!el || !d) return;
-    const resolve = makeResolver(docs.map((x) => x.path));
+    const resolve = makeResolver(docs.map((x) => x.path), d.path, [], docs);
     const open = (docPath: string) => {
       const hit = docs.find((x) => x.path === docPath);
       if (hit) navigate(`/s/${spaceId}/d/${hit.id}`);

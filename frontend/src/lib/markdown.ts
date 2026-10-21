@@ -1,16 +1,22 @@
 import {highlightCode} from './codeHighlight';
  import MarkdownIt from 'markdown-it';
 import {stripProtectedBlocks} from './protectedBlocks';
+import {proseMask} from './documentTags';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import footnote from 'markdown-it-footnote';
 import 'katex/dist/katex.min.css';
-export interface Resolved {href:string;missing:boolean;attach?:string;embed?:'image'|'file'}
+export interface Resolved {href:string;missing:boolean;attach?:string;embed?:'image'|'file';title?:string}
 export const attachmentExt=/\.(png|jpe?g|gif|webp|svg|pdf|mp4)$/i;
 const imageExt=/\.(png|jpe?g|gif|webp|svg)$/i;
-export function makeResolver(paths:string[],currentPath='',attachments:{path:string;url:string}[]=[]){
+// Stable document IDs (domain.NewID("doc")): 26 characters after the prefix.
+export const docIDRe=/^doc_[a-z0-9]{26}$/;
+export function makeResolver(paths:string[],currentPath='',attachments:{path:string;url:string}[]=[],docs:{id:string;path:string;title?:string}[]=[]){
  return(target:string):Resolved=>{
   const hash=target.indexOf('#'), name=(hash<0?target:target.slice(0,hash)).trim(),fragment=hash<0?'':target.slice(hash+1);
+  // Stable-ID links (memory refs and detail links) resolve by document ID
+  // and survive renames and moves without any rewriting.
+  if(docIDRe.test(name)){const hit=docs.find(d=>d.id===name);return hit?{href:hit.path+(fragment?'#'+fragment:''),missing:false,...(hit.title?{title:hit.title}:{})}:{href:'',missing:true}}
   // Known attachment extensions resolve as before; any other dotted target also gets an
   // attachment try when a real attachment shares its basename (.puml, .mmd, .docx, …).
   const attCandidate=attachmentExt.test(name)||attachments.some(a=>a.path.split('/').pop()===name.split('/').pop());
@@ -29,6 +35,24 @@ export function makeResolver(paths:string[],currentPath='',attachments:{path:str
   if(!hit){const matches=paths.filter(p=>p.split('/').pop()?.replace(/\.md$/i,'')===name.replace(/\.md$/i,''));if(matches.length===1)hit=matches[0]}
   return{href:hit?hit+(fragment?'#'+fragment:''):'',missing:!hit};
  }
+}
+// Interpret only structured memory reference fields in reading mode. The source
+// document stays byte-identical; examples, comments and unrelated IDs stay literal.
+export function memoryReadingLinks(source:string){
+ const mask=proseMask(source).split('\n');
+ return source.split('\n').map((line,i)=>{
+  if(!/^ {0,3}- memory: /.test(mask[i]||''))return line;
+  const prefix=line.match(/^ {0,3}- memory: /)![0];
+  try{
+   const entry=JSON.parse(line.slice(prefix.length));
+   if(!entry||typeof entry!=='object'||typeof entry.key!=='string'||typeof entry.text!=='string')return line;
+   let changed=false;
+   const wrap=(value:unknown)=>{if(typeof value==='string'&&docIDRe.test(value)){changed=true;return '[['+value+']]'}return value};
+   if('detail' in entry)entry.detail=wrap(entry.detail);
+   if(Array.isArray(entry.refs))entry.refs=entry.refs.map(wrap);
+   return changed?prefix+JSON.stringify(entry):line;
+  }catch{return line}
+ }).join('\n');
 }
 export const headingId=(s:string)=>s.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu,'').trim().replace(/\s+/g,'-');
 export function renderInto(container:HTMLElement,src:string,resolve:(target:string)=>Resolved,open:(path:string,frag?:string)=>void,onTask?:(index:number,checked:boolean)=>void){
@@ -68,7 +92,7 @@ export function renderInto(container:HTMLElement,src:string,resolve:(target:stri
   if(!silent){
    const embed=state.pos>0&&state.src[state.pos-1]==='!';
    if(embed){if(state.pending.endsWith('!'))state.pending=state.pending.slice(0,-1);else{const prev=state.tokens[state.tokens.length-1];if(prev&&prev.type==='text'&&prev.content==='!')state.tokens.pop()}}
-   const body=state.src.slice(state.pos+2,end);const [target,...alias]=body.split('|');const token=state.push(embed?'wikiembed':'wikilink','',0);token.content=alias.join('|')||target.split('/').pop()||target;token.meta={...resolve(target),target}}
+   const body=state.src.slice(state.pos+2,end);const [target,...alias]=body.split('|');const token=state.push(embed?'wikiembed':'wikilink','',0);const resolved=resolve(target);token.content=alias.join('|')||resolved.title||target.split('/').pop()||target;token.meta={...resolved,target}}
   state.pos=end+2;return true;
  });
  md.renderer.rules.wikilink=(tokens,i)=>{const t=tokens[i],r=t.meta as Resolved;return '<a class="wikilink'+(r.missing?' missing':'')+'" href="#"'+(r.missing?' title="Note does not exist yet" aria-label="'+md.utils.escapeHtml(t.content)+' — note does not exist yet"':'')+' data-target="'+md.utils.escapeHtml(t.meta?.target||t.content)+'" data-note="'+md.utils.escapeHtml(r.href)+'">'+md.utils.escapeHtml(t.content)+'</a>'};
@@ -92,7 +116,7 @@ export function renderInto(container:HTMLElement,src:string,resolve:(target:stri
  let body=src;const fm=body.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);if(fm)body=body.slice(fm[0].length);
  // Netsidian's own metadata blocks (mind-map membership links) are bookkeeping,
  // not prose: hide them from the rendered view while the raw source keeps them.
- body=stripProtectedBlocks(body);
+ body=memoryReadingLinks(stripProtectedBlocks(body));
  container.innerHTML=DOMPurify.sanitize(md.render(body));
  // markdown images pointing at vault attachments resolve to served URLs
  for(const img of container.querySelectorAll<HTMLImageElement>('img')){const src=img.getAttribute('src')||'';if(/^(https?:|data:|\/api\/)/.test(src))continue;const r=resolve(decodeURI(src.split('#')[0]));if(r.attach)img.src=r.attach;else img.classList.add('missing-embed')}

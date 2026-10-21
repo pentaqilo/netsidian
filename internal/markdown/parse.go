@@ -5,6 +5,7 @@
 package markdown
 
 import (
+	"encoding/json"
 	"net/url"
 	"regexp"
 	"slices"
@@ -24,6 +25,13 @@ var (
 	headingRe  = regexp.MustCompile(`^(#{1,6})\s+(.*?)\s*#*\s*$`)
 	taskRe     = regexp.MustCompile(`^\s*[-*+]\s+\[( |x|X)\]`)
 	fenceRe    = regexp.MustCompile(`^\s*(` + "`{3,}" + `|~{3,})`)
+
+	// Memory index entries reference documents by stable ID. Wrapped
+	// references are ordinary wikilinks; legacy bare IDs on an entry line
+	// ("`- memory: `") are extracted here so graph and backlinks see them
+	// too. IDs elsewhere in prose stay literal text on purpose.
+	memoryEntryRe = regexp.MustCompile(`^\s*-\s+memory:\s`)
+	docIDRe       = regexp.MustCompile(`^doc_[a-z0-9]{26}$`)
 
 	aliasLinkRe = regexp.MustCompile(`!?\[\[([^\]|#]+)(#[^\]|]*)?\|([^\]]+)\]\]`)
 	plainLinkRe = regexp.MustCompile(`!?\[\[([^\]|#]+)(#[^\]|]*)?\]\]`)
@@ -123,6 +131,28 @@ func Parse(src, fallbackTitle string) *ports.IndexData {
 				ref.Alias = strings.TrimSpace(m[6])
 			}
 			idx.Wikilinks = append(idx.Wikilinks, ref)
+		}
+		if mm := memoryEntryRe.FindStringSubmatchIndex(clean); mm != nil {
+			// Legacy bare stable-ID refs/details: only the structured
+			// ref/detail fields are references; IDs quoted inside entry
+			// text stay literal. Bracket-wrapped refs are already captured
+			// as wikilinks above, so only unwrapped IDs are added here.
+			var entry struct {
+				Key    string   `json:"key"`
+				Text   string   `json:"text"`
+				Refs   []string `json:"refs"`
+				Detail string   `json:"detail"`
+			}
+			if json.Unmarshal([]byte(strings.TrimSpace(line[mm[1]:])), &entry) == nil && entry.Key != "" && entry.Text != "" {
+				for _, target := range append(entry.Refs, entry.Detail) {
+					if strings.Contains(target, "[[") {
+						continue
+					}
+					if docIDRe.MatchString(target) {
+						idx.Wikilinks = append(idx.Wikilinks, ports.LinkRef{Target: target})
+					}
+				}
+			}
 		}
 		for _, m := range mdLinkRe.FindAllStringSubmatch(clean, -1) {
 			url := m[1]

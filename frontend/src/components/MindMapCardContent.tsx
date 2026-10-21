@@ -13,7 +13,7 @@ export function MindMapCardContent({space,id,revision,epoch,docs,attachments,exp
  useEffect(()=>{let active=true;setError(false);api.getDocument(space,id).then(n=>{if(active){lastText.current=undefined;setNote(n)}}).catch(()=>{if(active)setError(true)});return()=>{active=false}},[space,id,revision,epoch,retry]);
  const lastText=useRef<string|undefined>(text);if(text!==undefined)lastText.current=text;
  const source=text??lastText.current??note?.markdown??'';
- const resolver=useMemo(()=>makeResolver(docs.map(d=>d.path),note?.path,attachments.map(a=>({...a,url:api.attachmentURL(space,a.path)}))),[docs,attachments,note?.path,space]);
+ const resolver=useMemo(()=>makeResolver(docs.map(d=>d.path),note?.path,attachments.map(a=>({...a,url:api.attachmentURL(space,a.path)})),docs),[docs,attachments,note?.path,space]);
  const links=useMemo(()=>{
   const targets:string[]=[];const md=new MarkdownIt({html:false});
   for(const block of md.parse(source,{}))for(const token of block.children||[])if(token.type==='link_open'){const href=token.attrGet('href');if(href)try{targets.push(decodeURIComponent(href))}catch{/* malformed link remains in source */}}

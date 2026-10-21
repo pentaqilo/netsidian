@@ -77,7 +77,7 @@ func (s *Services) AgentWhoami(ctx context.Context, a *Actor) (*AgentWhoami, err
 		w.Auth.Method = "local"
 	}
 	actions := []domain.Action{domain.ActionRead, domain.ActionSearch, domain.ActionExport,
-		domain.ActionCreate, domain.ActionEdit, domain.ActionTrash, domain.ActionRestore}
+		domain.ActionCreate, domain.ActionEdit, domain.ActionAttachments, domain.ActionTrash, domain.ActionRestore, domain.ActionPurge, domain.ActionMembers, domain.ActionMemoryPropose, domain.ActionMemoryReview, domain.ActionMemoryDelete}
 	anyWrite := false
 	for i, sp := range spaces {
 		role := roles[i]
@@ -105,11 +105,14 @@ func (s *Services) AgentWhoami(ctx context.Context, a *Actor) (*AgentWhoami, err
 				}
 			}
 			allowed = append(allowed, string(act))
-			if act == domain.ActionCreate || act == domain.ActionEdit {
+			if act != domain.ActionRead && act != domain.ActionSearch && act != domain.ActionExport {
 				anyWrite = true
 			}
 		}
-		for _, special := range []struct{ scope, operation string }{{domain.ScopeGraphRead, "graph"}} {
+		for _, special := range []struct{ scope, operation string }{{domain.ScopeGraphRead, "graph"}, {domain.ScopeAttachmentsRead, "attachments_read"}, {domain.ScopeHistoryRead, "history_read"}, {domain.ScopeEventsRead, "events"}} {
+			if (special.scope == domain.ScopeHistoryRead || special.scope == domain.ScopeEventsRead) && a.Key != nil && (!hasScope(a.Key.Scopes, special.scope) || !hasScope(a.Key.Scopes, domain.ScopeDocumentsRead)) {
+				continue
+			}
 			if domain.RoleCan(role, domain.ActionRead) && (a.Key == nil || len(a.Key.Scopes) == 0 || hasScope(a.Key.Scopes, special.scope)) {
 				allowed = append(allowed, special.operation)
 			}

@@ -140,6 +140,7 @@ func (s *Server) Handler() http.Handler {
 	doc("GET /api/v1/spaces/{space}/attachments/{path...}", s.wrap(s.handleAttachmentGet, false))
 	doc("GET /api/v1/spaces/{space}/text-files/{path...}", s.wrap(s.handleTextFileGet, false))
 	doc("PUT /api/v1/spaces/{space}/text-files/{path...}", s.wrap(s.handleTextFilePut, false))
+	doc("GET /api/v1/spaces/{space}/documents/by-path", s.wrap(s.handleDocByPath, false))
 	doc("GET /api/v1/spaces/{space}/documents/lookup", s.wrap(s.handleDocLookup, false))
 	doc("GET /api/v1/spaces/{space}/documents", s.wrap(s.handleDocsList, false))
 	doc("POST /api/v1/spaces/{space}/documents", s.wrap(s.handleDocCreate, false))

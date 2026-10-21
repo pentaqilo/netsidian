@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"net/http"
+	"path"
 	"strings"
 
+	"github.com/pentaqilo/netsidian/internal/domain"
 	"github.com/pentaqilo/netsidian/internal/service"
 )
 
@@ -25,7 +27,18 @@ func (s *Server) handleMindMapsList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMindMapGet(w http.ResponseWriter, r *http.Request) {
-	m, err := s.Svc.GetMindMap(r.Context(), actorOf(r), spaceID(r), mindMapPath(r))
+	raw := mindMapPath(r)
+	m, err := s.Svc.GetMindMap(r.Context(), actorOf(r), spaceID(r), raw)
+	// Exact folder wins, including a real map folder named mindmap.md. Only
+	// fall back if the supplied path resolves to a live configuration document.
+	if e, ok := err.(*domain.Error); ok && e.Code == domain.ErrCodeNotFound {
+		if canon, _, perr := domain.NormalizePath(raw); perr == nil && strings.HasSuffix(canon, "/mindmap.md") {
+			doc, lookupErr := s.Svc.LookupDocument(r.Context(), actorOf(r), spaceID(r), canon)
+			if lookupErr == nil {
+				m, err = s.Svc.GetMindMap(r.Context(), actorOf(r), spaceID(r), path.Dir(doc.Path))
+			}
+		}
+	}
 	if err != nil {
 		writeErr(w, err)
 		return

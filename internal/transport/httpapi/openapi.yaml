@@ -269,6 +269,14 @@ paths:
     parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: member, in: path, required: true, schema: {type: string}}]
     put: {tags: [vaults], summary: Change member role, requestBody: {content: {application/json: {schema: {type: object, properties: {role: {$ref: "#/components/schemas/Role"}}}}}}, responses: {"200": {description: ok}, "4xx": {$ref: "#/components/responses/Error"}}}
     delete: {tags: [vaults], summary: Remove a member, responses: {"200": {description: removed}, "4xx": {$ref: "#/components/responses/Error"}}}
+  /api/v1/spaces/{space}/documents/by-path:
+    parameters: [{$ref: "#/components/parameters/SpacePath"}]
+    get:
+      tags: [documents]
+      summary: Read document content by vault-relative file path (ETag = revision)
+      description: 'Convenience read using the same permissions as ID-based reads. For metadata only use documents/lookup?path=...; the id returned there is the {doc} parameter in documents/{doc}.'
+      parameters: [{name: path, in: query, required: true, schema: {type: string}, description: 'Vault-relative path, e.g. Research/Interview notes.md; encode as a query value.'}]
+      responses: {"200": {description: Document content with documentId and ETag}, "4xx": {$ref: "#/components/responses/Error"}}
   /api/v1/spaces/{space}/documents/lookup:
     parameters: [{$ref: "#/components/parameters/SpacePath"}]
     get:
@@ -286,7 +294,7 @@ paths:
       responses: {"201": {description: DocMeta, content: {application/json: {schema: {$ref: "#/components/schemas/DocMeta"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
   /api/v1/spaces/{space}/documents/{doc}:
     parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}]
-    get: {tags: [documents], summary: Read a note (ETag = revision), responses: {"200": {description: document content object}, "4xx": {$ref: "#/components/responses/Error"}}}
+    get: {tags: [documents], summary: Read a note by document ID, not file path (ETag = revision), responses: {"200": {description: document content object}, "4xx": {$ref: "#/components/responses/Error"}}}
   /api/v1/spaces/{space}/documents/{doc}/content:
     parameters: [{$ref: "#/components/parameters/SpacePath"}, {$ref: "#/components/parameters/DocPath"}]
     put:
@@ -436,7 +444,8 @@ paths:
   /api/v1/spaces/{space}/mindmaps/mindmap:
     get:
       tags: [mindmaps]
-      summary: Read a mind map canvas with nodes resolved against documents
+      summary: Read a mind map by folder or mindmap.md file path with resolved nodes
+      description: 'path accepts a map folder (Mind maps/Plan) or its configuration file (Mind maps/Plan/mindmap.md). An exact map folder named mindmap.md wins. The response path is the canonical map folder; mutation endpoints continue to use that folder.'
       parameters: [{$ref: "#/components/parameters/SpacePath"}, {name: path, in: query, required: true, schema: {type: string}}]
       responses: {"200": {description: Mind map view with ETag}, "4xx": {$ref: "#/components/responses/Error"}}
   /api/v1/spaces/{space}/mindmaps/config:
@@ -645,7 +654,7 @@ components:
       description: 'Scoped API key (nsd keyId/secret form) from POST /me/keys; restricts the principal by scopes and vault binding.'
   parameters:
     SpacePath: {name: space, in: path, required: true, schema: {type: string}, description: vault (space) id}
-    DocPath: {name: doc, in: path, required: true, schema: {type: string}}
+    DocPath: {name: doc, in: path, required: true, description: "Opaque document ID, e.g. doc_...; never a file path. Resolve paths via documents/lookup?path=... or read directly via documents/by-path?path=...", schema: {type: string}}
     IdPath: {name: id, in: path, required: true, schema: {type: string}}
     PathWild: {name: path, in: path, required: true, schema: {type: string}, description: vault-relative path (may contain slashes)}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: false, schema: {type: string}, description: makes the write replay-safe; same key and same body returns the original result, same key with different body is a 409}

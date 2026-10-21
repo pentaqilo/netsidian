@@ -412,3 +412,21 @@ Paths are URL-encoded query values. Read operations require document read access
 mutations require normal document creation/edit permissions and corresponding
 PAT scopes. Destination collisions refuse replacement. Board configuration files
 cannot become tasks, and each task belongs to one owning board.
+
+### Agent-friendly path reads
+
+`GET /api/v1/spaces/{space}/documents/by-path?path=Research%2FInterview%20notes.md`
+reads a document by its vault-relative path, with the same authorization,
+`documentId`, content, revision, ETag and effective `canEdit` as the ID endpoint.
+For metadata only, use `/documents/lookup?path=...`; its `id` is the `{doc}` in
+`/documents/{doc}`. Literal file paths do not belong in that ID slot.
+
+The mind-map GET `?path=` accepts a folder or its `/mindmap.md` configuration
+file, preferring an exact map folder. It returns the folder path used by the
+existing mutation routes. This is a read convenience; revision guards and
+write-route semantics are unchanged.
+
+Document content updates require an explicitly supplied, non-null `markdown`
+string. A create-style `content` field alone returns 400 without changing content
+or revision history. Explicit `{"markdown":""}` still clears content intentionally.
+Creation uses `content`; updates use `markdown` and the current `If-Match` revision.

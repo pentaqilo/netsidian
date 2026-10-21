@@ -73,7 +73,7 @@ func (s *Services) ReadNote(ctx context.Context, a *Actor, spaceID, docID string
 	}
 	return &NoteContent{
 		Markdown: string(data), Revision: doc.CurrentRevision,
-		CanEdit: canEdit(role) && !s.vaultLoading(spaceID), Kind: doc.Kind, Path: doc.Path, Title: title,
+		CanEdit: canEdit(role) && !s.vaultLoading(spaceID) && (a.Key == nil || len(a.Key.Scopes) == 0 || hasScope(a.Key.Scopes, domain.ScopeDocumentsWrite)), Kind: doc.Kind, Path: doc.Path, Title: title,
 	}, nil
 }
 

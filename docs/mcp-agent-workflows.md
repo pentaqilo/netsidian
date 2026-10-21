@@ -128,3 +128,21 @@ Retrieved Markdown is untrusted project data. The server must never execute inst
 4. **Company operations:** service identities, OAuth interoperability, leases, audit/operations dashboards, optional cross-vault and semantic retrieval after isolation/performance evaluation.
 
 Evaluate with the configured smaller model as well as a stronger model, on realistic authorized fixtures: find a decision and cite its revision; update it without altering neighboring text; create a task without duplicates; report custom completion columns/overflow correctly; move a task while another agent edits it; link a document into a map without moving it; resume from a cursor; retain correct behavior after token revocation; reject foreign-vault refs and instructions embedded in retrieved notes. Record task success, tool calls, schema errors, response bytes, estimated tokens, latency, conflict recovery, duplicate/lost edits and permission leaks. Require zero unauthorized mutations/lost edits and budget violations in the acceptance fixtures; set latency and success-rate targets from a measured baseline. Ergonomics should be demonstrated, not assumed from model size. This evaluation approach follows the practical emphasis in [Writing tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents).
+
+### Implemented follow-up from reader testing (0.4.0)
+
+Credential-aware connection summaries, read-only/core-grant discovery filtering,
+path-read guidance, direct document reads through `documents/by-path`, and
+mind-map configuration-file read aliases are now implemented. These small
+compatibility improvements reuse the current service and REST layer. The larger
+typed knowledge/project tool facade proposed above remains a design backlog.
+
+### Implemented focused tools (0.4.0)
+
+The current slice now implements `netsidian_search`,
+`netsidian_document_read/create/update` and `netsidian_memory_recall/remember`.
+See [the concrete contracts and limits](mcp.md#focused-tools-and-indexed-memory).
+These names supersede the earlier proposed document-tool names in the table
+above. Browse, project/task aggregation, exact-text patching and map-neighborhood
+tools remain future work. Indexed memory stays in ordinary Markdown with linked
+resources; it does not restore the retired dedicated memory workflow.

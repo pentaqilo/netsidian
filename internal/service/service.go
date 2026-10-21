@@ -48,6 +48,7 @@ type Services struct {
 
 	mu        sync.Mutex
 	locks     map[string]*sync.Mutex // per-document writer locks
+	memoryOps map[string]*sync.Mutex // serializes memory index workflows, outside document locks
 	spaceOps  map[string]*sync.Mutex // per-space mutation serialization
 	hubs      map[string]*EventHub   // per-space in-process fanout
 	PermVer   map[string]int64
@@ -79,6 +80,7 @@ func NewServices(cfg Config, users ports.UserRepo, spaces ports.SpaceRepo, invit
 		Index: index, Mem: mem, Prefs: prefs, Content: content, State: state,
 		locks:     map[string]*sync.Mutex{},
 		spaceOps:  map[string]*sync.Mutex{},
+		memoryOps: map[string]*sync.Mutex{},
 		hubs:      map[string]*EventHub{},
 		loads:     map[string]*vaultLoadJob{},
 		loadSlots: make(chan struct{}, 1),

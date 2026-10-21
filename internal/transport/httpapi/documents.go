@@ -55,28 +55,56 @@ func (s *Server) handleDocCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, doc)
 }
 
+const documentReadGuide = "{doc} is a document ID, not a file path. Use GET /api/v1/spaces/{space}/documents/by-path?path=Research/Note.md for content, or GET /api/v1/spaces/{space}/documents/lookup?path=Research/Note.md then GET /api/v1/spaces/{space}/documents/{id}."
+
 func (s *Server) handleDocGet(w http.ResponseWriter, r *http.Request) {
-	nc, err := s.Svc.ReadNote(r.Context(), actorOf(r), spaceID(r), docID(r))
+	id := docID(r)
+	if strings.ContainsAny(id, "/\\") || strings.HasSuffix(strings.ToLower(id), ".md") {
+		if _, err := s.Svc.Require(r.Context(), actorOf(r), spaceID(r), domain.ActionRead); err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeErr(w, domain.Invalid(documentReadGuide))
+		return
+	}
+	s.writeDocumentContent(w, r, id)
+}
+
+func (s *Server) handleDocByPath(w http.ResponseWriter, r *http.Request) {
+	doc, err := s.Svc.LookupDocument(r.Context(), actorOf(r), spaceID(r), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	s.writeDocumentContent(w, r, doc.ID)
+}
+
+func (s *Server) writeDocumentContent(w http.ResponseWriter, r *http.Request, id string) {
+	nc, err := s.Svc.ReadNote(r.Context(), actorOf(r), spaceID(r), id)
+	if err != nil {
+		if e, ok := err.(*domain.Error); ok && e.Code == domain.ErrCodeNotFound {
+			err = domain.NotFound("document not found. " + documentReadGuide)
+		}
+		writeErr(w, err)
+		return
+	}
 	w.Header().Set("ETag", `"`+nc.Revision+`"`)
-	writeJSON(w, 200, map[string]any{
-		"documentId": docID(r), "path": nc.Path, "kind": nc.Kind, "title": nc.Title,
-		"markdown": nc.Markdown, "revision": nc.Revision, "canEdit": nc.CanEdit,
-	})
+	writeJSON(w, 200, map[string]any{"documentId": id, "path": nc.Path, "kind": nc.Kind, "title": nc.Title, "markdown": nc.Markdown, "revision": nc.Revision, "canEdit": nc.CanEdit})
 }
 
 func (s *Server) handleDocSave(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Markdown string `json:"markdown"`
+		Markdown *string `json:"markdown"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
+	if in.Markdown == nil {
+		writeErr(w, domain.Invalid("markdown is required for updates; document creation uses content. No changes were saved."))
+		return
+	}
 	ifMatch := strings.Trim(r.Header.Get("If-Match"), `"`)
-	res, err := s.Svc.SaveContent(r.Context(), actorOf(r), spaceID(r), docID(r), ifMatch, in.Markdown,
+	res, err := s.Svc.SaveContent(r.Context(), actorOf(r), spaceID(r), docID(r), ifMatch, *in.Markdown,
 		r.Header.Get("Idempotency-Key"))
 	if err != nil {
 		writeErr(w, err)

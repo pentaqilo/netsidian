@@ -142,3 +142,127 @@ an implemented refinement in [mcp-validation.md](mcp-validation.md).
 - [MCP authorization specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization)
 - [Official Go SDK](https://github.com/modelcontextprotocol/go-sdk)
 - [Codex MCP configuration](https://developers.openai.com/codex/mcp/)
+
+### Credential-aware connection and path reads
+
+`netsidian_connect` now includes `readOnly`, `auth.scopes`, `vaults` with each
+vault's `allowedOperations`, and `memory.writeAllowed`. These describe the
+current credential and membership, intersected with desktop MCP restrictions.
+A token that only reads cannot store agent-memory notes. Ordinary memory
+Markdown writes need `documents:write`, the appropriate vault binding and an
+editor/owner role. Attachment-only or delete-only credentials are not globally
+read-only, but do not thereby gain document/memory write permission.
+
+Discovery marks mutations unavailable to a read-only credential and checks core
+document/map/board/attachment grants. Availability is across accessible vaults;
+check the target vault's operations and scopes. Revision, ownership, request-body
+and current authorization checks still run through REST on every actual call.
+
+A document URL uses an **ID**, never its file path:
+
+1. For a direct content read, discover `GET /api/v1/spaces/{space}/documents/by-path`
+   and pass `query: {"path": "Research/Interview notes.md"}`.
+2. Alternatively, use `GET /api/v1/spaces/{space}/documents/lookup` with that
+   query, then pass the returned `id` as `pathParameters.doc` to
+   `GET /api/v1/spaces/{space}/documents/{doc}`.
+
+The direct path read returns the same content, revision/ETag and scope-aware
+`canEdit` flag as an ID read. Paths remain query values; a URL such as
+`/documents/Research/Interview notes.md` is not a valid document-ID route.
+MCP errors for mistaken document path parameters explain the lookup workflow.
+
+`GET /api/v1/spaces/{space}/mindmaps/mindmap` accepts either
+`query.path: "Mind maps/Launch planning"` or
+`query.path: "Mind maps/Launch planning/mindmap.md"`. Its response always uses
+the map folder path; use that returned path for mutations. An exact configured
+folder literally named `mindmap.md` wins over the file alias. The alias only
+resolves an existing live configuration document, and keeps permission checks.
+
+### Saving preferences safely
+
+Use the vault **ID** from `netsidian_connect.vaults[].id` or `GET /api/v1/spaces`
+for `{space}`. Names and slugs are not IDs. Inspect that vault's allowed operations
+before writing; a read-only token cannot persist preferences.
+
+Create a document using `POST .../documents` with `{ "path":
+"agent-memory/user-preferences.md", "content": "..." }`. Update its content using
+`PUT .../documents/{doc}/content` with `{ "markdown": "..." }`, the current
+`If-Match` revision and an idempotency key for that logical write. Preserve existing
+preferences and the user's exact wording, especially names and forms of address.
+Missing/null `markdown` is rejected without a save; an explicit empty string is
+an intentional clear. Read the document back and compare its content before
+claiming that a preference was remembered. Persistence does not guarantee that
+another agent will load that document in a later conversation.
+
+## Focused tools and indexed memory
+
+Available since Netsidian 0.4.0.
+
+Prefer these tools for common work; REST discovery is only needed for advanced
+operations. All use `vaultId`, which may be omitted only when the current
+credential has exactly one accessible vault. New tool schemas reject unknown
+fields. Existing generic adapters remain compatible.
+
+| Tool | Inputs | Compact result |
+| --- | --- | --- |
+| `netsidian_connect` | Optional `setup: true` for full configuration | Vault IDs, scopes, allowed operations and memory write permission |
+| `netsidian_search` | `query` or `folder`/`tags`, optional `kinds`, `limit`, `maxBytes`, `cursor` | Ranked excerpts and a continuation cursor |
+| `netsidian_document_read` | Exactly one of `documentId`/`path`; optional `offset`, `revision`, `maxBytes` | Markdown chunk, revision, `hasMore` and `nextOffset` |
+| `netsidian_document_create` | `path`, `markdown`, optional `idempotencyKey` | Document ID, path and revision |
+| `netsidian_document_update` | Exactly one of `documentId`/`path`, `markdown`, `revision`, optional `idempotencyKey` | Document ID and committed revision |
+| `netsidian_memory_recall` | Optional `folder`, `key`, `scope`, `query`, `limit`, `maxBytes`, `offset`, `revision` | Matching entries and references, never linked bodies |
+| `netsidian_memory_remember` | `key`, `text`; optional `folder`, `scope`, `refs`, `detail`, `detailPath`, `detailRevision`, `expectedRevision`, `idempotencyKey` | Compact verified receipt |
+
+`markdown` is required for both focused create and update tools; explicit empty
+strings are accepted. REST creation still uses `content`. Document continuation
+requires the first page's `revision`; memory continuation requires `indexRevision`
+in the next call's `revision`. Changed revisions fail instead of mixing versions.
+Read every chunk before a full replacement. Search cursors retain existing query
+and index-generation guards.
+
+Search defaults to 8 snippets, recall to 20 entries; their maxima are 20 and 50.
+Search, document reads and recall default to 8192 serialized JSON bytes and accept
+1024–32768. Limits include response fields and JSON escaping, not just content
+characters; transport wrappers are additional. An indivisible entry or metadata
+that cannot fit returns a clear error requesting a larger budget. Connection
+setup and the generic REST adapter retain their separate existing limits.
+
+### Memory index and links
+
+The default index is the ordinary Markdown document `agent-memory/index.md`.
+Custom folders use the same `folder` argument on recall and remember. Each entry
+is one JSON bullet (`- memory: {...}`), preserving exact text including newlines
+and punctuation. References are stored as wiki links; other document text and
+unrelated entries are preserved. This format is not the retired governed-memory
+workflow and does not use its dedicated scopes or tables.
+
+```json
+{"key":"preferences.address","text":"jasnie panie","idempotencyKey":"address-1"}
+```
+
+```json
+{"key":"projects.website","text":"Current decisions and work live here","scope":"project","refs":["Projects/Website","Tasks/Delivery/board.md"],"idempotencyKey":"website-1"}
+```
+
+`refs` must resolve to existing same-vault resources. Documents use stable IDs;
+board/map folder references resolve to their marked configuration document IDs.
+Plain folders use paths and can become unavailable after a folder rename. Recall
+marks missing/trashed targets with `available: false` without deleting the entry.
+Omitted refs/scope preserve existing values; `refs: []` explicitly removes links.
+Project/task status remains authoritative in its original resource, not the index.
+
+Long `detail` content is stored separately under `<folder>/details/`; the index
+contains only its link. Use refs for existing project documents. Existing detail
+content can only be replaced when already owned by that entry, with its current
+`detailRevision`. The detail link follows document renames. The short text has a
+500-character limit; keys allow lowercase letters, digits, dots, underscores and
+hyphens, up to 96 characters. Missing/null/wrong fields never imply an empty save.
+
+Remember rechecks read/write permissions, merges using the current index revision,
+verifies the index and any newly written detail, and records an idempotent receipt.
+Use the same idempotency key and identical input for retries; changed input with
+that key fails. An optional `expectedRevision` rejects an outdated index before
+writing. Details and index are individually journaled document saves, not a single
+multi-document transaction; a failure may leave a detail file without its index
+link. Inspect reported conflicts rather than blindly retrying with a new key.
+No automatic migration or deletion of existing memory notes occurs.

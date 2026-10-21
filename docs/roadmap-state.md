@@ -197,3 +197,25 @@ Publication uses the existing Release workflow triggered by tag 0.4.0.
   tests across 45 files, production frontend build and git diff --check.
   The validated memory-link fix is tracked on fix/memory-internal-links;
   published 0.4.0 and its review container have not been changed by this fix.
+
+## Follow-up: file-list refresh button
+
+- Added a circular-arrow Refresh file list button to the explorer action row.
+  Reuses the current-vault document/folder/attachment loader; remains available
+  for read-only vaults, disables during a manual refresh and re-enables on failure.
+- OpenCode default agent (qwen3.8-flash-next-iq3_xxs) implemented the change;
+  independent review retained filters, selection and editor drafts and removed
+  incidental whitespace changes.
+- Validation: TypeScript and all 382 existing frontend tests passed. An isolated
+  Playwright browser confirmed tooltip/visible placement, one refresh request,
+  pending disabled state, preserved filter and recovery from a simulated 500.
+  Browser checks made no vault writes. Temporary preview/browser were stopped.
+- Local changes only; no new push or release for this follow-up.
+
+## Main-branch consolidation (2026-10-22)
+
+The user requested all completed work on main, removal of other branches, and
+no new branches unless explicitly requested. The validated memory-link fix,
+project-workflow design and file-list refresh button are consolidated together.
+Earlier branch/local-only status entries above are historical and superseded by
+this consolidation. AGENTS.md records the standing main-only workflow preference.

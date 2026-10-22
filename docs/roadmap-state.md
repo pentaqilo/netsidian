@@ -271,14 +271,17 @@ default) was bumped and custom release notes were prepared in
 
 ### Screenshot follow-up (0.5.0)
 
-- Refreshed README appearance, document reading mode, Memos, Kanban, mind map,
-  MCP/agent settings and file-explorer screenshots. Seven real 1440x1000 captures
-  from the published 0.5.0 image, with accurate captions and all 11 README image
-  links checked. The file-explorer capture now shows the new Refresh file list
-  button and the redesigned default accent (#70a4fb).
+- Refreshed all 11 README screenshots from the published 0.5.0 image: knowledge
+  map, appearance, document reading mode, Memos, Kanban, mind map, MCP/agent
+  settings, PDF viewer, file explorer, empty vault and the sign-in screen with
+  the MCP instructions panel. Eleven real 1440x1000 captures with accurate
+  captions and all 11 README image links checked. The captures show the
+  redesigned default accent (#70a4fb), the new Refresh file list button, the
+  linked memory references on the knowledge map, and the PDF Convert to Markdown
+  action.
 - Captures used isolated tmpfs test data in a temporary Docker container
   (netsidian-shots, ghcr.io/pentaqilo/netsidian:0.5.0, host port 3011) seeded via
   the REST API: one Demo vault with notes, a Kanban board, a mind map with a
-  linked note and connectors, three memos and one PNG attachment. The container
-  and its tmpfs data were removed after capture; no shared/review content was
-  touched and no real tokens were created.
+  linked note and connectors, memos, a knowledge map and one PDF attachment. The
+  container and its tmpfs data were removed after capture; no shared/review
+  content was touched and no real tokens were created.

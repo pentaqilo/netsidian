@@ -6,7 +6,7 @@ Netsidian runs on hardware you control. Your notes stay plain `.md` files in a n
 
 ---
 
-![Knowledge map with folder colors and an inline document preview](docs/screenshots/knowledge-map.png)
+![Graph link layout with notes colored by folder and dense cross-links](docs/screenshots/knowledge-map.png)
 
 ## Features
 
@@ -195,6 +195,10 @@ Release automation runs on version tags such as `0.2.0`. It publishes the GitHub
 ### Sign-in with MCP instructions
 
 ![Sign-in screen with the expandable MCP instructions panel at the bottom left](docs/screenshots/login-mcp.png)
+
+### Graph topic atlas
+
+![Topic atlas layout grouping notes into folder regions with a knowledge-base sidebar](docs/screenshots/topic-atlas.png)
 
 
 

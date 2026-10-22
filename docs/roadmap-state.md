@@ -271,17 +271,24 @@ default) was bumped and custom release notes were prepared in
 
 ### Screenshot follow-up (0.5.0)
 
-- Refreshed all 11 README screenshots from the published 0.5.0 image: knowledge
-  map, appearance, document reading mode, Memos, Kanban, mind map, MCP/agent
-  settings, PDF viewer, file explorer, empty vault and the sign-in screen with
-  the MCP instructions panel. Eleven real 1440x1000 captures with accurate
-  captions and all 11 README image links checked. The captures show the
-  redesigned default accent (#70a4fb), the new Refresh file list button, the
-  linked memory references on the knowledge map, and the PDF Convert to Markdown
-  action.
+- Refreshed all 12 README screenshots from the published 0.5.0 image: graph link
+  layout, appearance, document reading mode, Memos, Kanban, mind map, MCP/agent
+  settings, PDF viewer, file explorer, empty vault, the sign-in screen with the
+  MCP instructions panel, and the graph topic atlas. Twelve real 1440x1000
+  captures with accurate captions and all 12 README image links checked. The
+  captures show the redesigned default accent (#70a4fb), the new Refresh file
+  list button, and the PDF Convert to Markdown action.
 - Captures used isolated tmpfs test data in a temporary Docker container
   (netsidian-shots, ghcr.io/pentaqilo/netsidian:0.5.0, host port 3011) seeded via
   the REST API: one Demo vault with notes, a Kanban board, a mind map with a
   linked note and connectors, memos, a knowledge map and one PDF attachment. The
   container and its tmpfs data were removed after capture; no shared/review
   content was touched and no real tokens were created.
+- Graph follow-up: renamed the graph view's visible title from "Knowledge map" to
+  "Graph" (Graph2.tsx; the section aria-label already read "Graph"). The hero
+  knowledge-map.png now shows a denser link layout (30 notes, 138 links) and a new
+  topic-atlas.png shows the atlas layout with folder regions and the knowledge-base
+  sidebar. Because the rename is not in the published 0.5.0 image, these two
+  captures came from a source-built image (netsidian:shots) in the same isolated
+  tmpfs container, seeded with 30 cross-linked notes across six folders; the
+  container and its data were removed afterwards.

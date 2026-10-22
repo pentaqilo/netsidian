@@ -1,3 +1,4 @@
+import {randomId} from '../lib/randomId';
 // The map creation dialog, shared by the Maps list page and the file
 // explorer's create menu so both flows stay identical (name-driven folder,
 // idempotent creation). `initialPath` lets a caller prefill the map folder.
@@ -36,7 +37,7 @@ export function CreateMapDialog({ space, mindMaps, folders, initialPath = 'Mind 
       const cleanPath = path.trim().replace(/\/+$/, '');
       const body = { path: cleanPath, title: title.trim() || cleanPath.split('/').pop() || cleanPath };
       const signature = JSON.stringify(body);
-      if (idemRef.current?.signature !== signature) idemRef.current = { signature, key: crypto.randomUUID() };
+      if (idemRef.current?.signature !== signature) idemRef.current = { signature, key: randomId() };
       const m = await api.createMindMap(space, body, idemRef.current.key);
       idemRef.current = null;
       onCreated(m.path);

@@ -1,7 +1,7 @@
 import {queuePreferenceWrite} from '../lib/preferences';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {type AccentPreset, isHex, resolveAccent, resolveMemoAccent} from '../lib/accent';
+import {type AccentPreset, isHex, contrastRatio, resolveAccent, resolveMemoAccent} from '../lib/accent';
 import {Icon} from './Icon';
 import {overlayPoint,uiZoom} from '../lib/overlayPosition';
 export interface ThemeColors{preset:AccentPreset;accent:string;hColor:string;linkColor:string;quoteColor:string;codeColor:string;memoColor:string}
@@ -44,7 +44,7 @@ export function useAppearance(user:string){
   // the theme (manually or via the system) re-runs apply and swaps the whole set.
   const t=dark?appearance.dark:appearance.light;
   const accent=resolveAccent(dark?'dark':'light',t.accent,t.preset);
-  document.documentElement.style.setProperty('--accent',accent);document.documentElement.style.setProperty('--editor-size',appearance.fontSize+'px');document.documentElement.style.setProperty('--line-width',appearance.lineWidth+'px');
+  document.documentElement.style.setProperty('--accent',accent);document.documentElement.style.setProperty('--accent-text',contrastRatio(accent,'#ffffff')>=contrastRatio(accent,'#111111')?'#ffffff':'#111111');document.documentElement.style.setProperty('--editor-size',appearance.fontSize+'px');document.documentElement.style.setProperty('--line-width',appearance.lineWidth+'px');
   // Whole-app UI zoom: root `zoom` scales every layer; --ui-zoom lets viewport-unit sizes divide back (see styles.css).
   document.documentElement.dataset.navLabels=String(appearance.navLabels);const z=(appearance.zoom||100)*1.2;
   document.documentElement.style.setProperty('--ui-zoom',String(z/100));

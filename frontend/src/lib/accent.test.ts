@@ -10,9 +10,9 @@ describe('accent tokens (P3-A01)', () => {
   it('defaults to the exact blue brand color in both themes', () => {
     const dark = resolveAccent('dark', '');
     const light = resolveAccent('light', '');
-    expect(dark).toBe('#0561f5');
-    expect(light).toBe('#0561f5');
-    expect(contrastRatio(light, '#ffffff')).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(dark).toBe('#70a4fb');
+    expect(light).toBe('#70a4fb');
+    expect(contrastRatio(light, '#111111')).toBeGreaterThanOrEqual(MIN_CONTRAST);
   });
   it('keeps violet available as a named preset',()=>{expect(resolveAccent('dark','','violet')).toBe('#b7a0ff');expect(resolveAccent('light','','violet')).toBe('#6840bd')});
   it('neutral is an explicit gray preset distinct from the default', () => {

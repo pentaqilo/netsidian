@@ -1,3 +1,4 @@
+import {randomId} from '../lib/randomId';
 // The board creation dialog, shared by the Boards list page and the file
 // explorer's create menu so both flows stay identical (columns, templates,
 // idempotent creation). `initialPath` lets a caller prefill the board folder.
@@ -15,7 +16,9 @@ export function CreateBoardDialog({ space, boards, folders, initialPath = 'Tasks
   onClose: () => void; onCreated: (path: string) => void; onError: (message: string) => void;
 }) {
   const [path, setPath] = useState(initialPath);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(initialPath.split('/').pop() || 'New board');
+  const [pathEdited,setPathEdited]=useState(false);
+  const baseDir=initialPath.includes('/')?initialPath.slice(0,initialPath.lastIndexOf('/')):'';
   const [template, setTemplate] = useState('');
   const [columns, setColumns] = useState<BoardColumnDraft[]>(defaultBoardColumns());
   const [errors, setErrors] = useState<string[]>([]);
@@ -42,7 +45,7 @@ export function CreateBoardDialog({ space, boards, folders, initialPath = 'Tasks
         title: title.trim() || cleanPath.split('/').pop() || cleanPath,
         ...(template ? { template } : { columns: columns.map((c) => ({ id: c.id, label: c.label.trim() || c.id, folder: c.folder.trim(), completion: c.completion, wipLimit: c.wipLimit })) }),
       };
- const signature=JSON.stringify(body);if(idemRef.current?.signature!==signature)idemRef.current={signature,key:crypto.randomUUID()};
+ const signature=JSON.stringify(body);if(idemRef.current?.signature!==signature)idemRef.current={signature,key:randomId()};
  const board=await api.createBoard(space,body,idemRef.current.key);
       idemRef.current = null;
       onCreated(board.path);
@@ -53,12 +56,12 @@ export function CreateBoardDialog({ space, boards, folders, initialPath = 'Tasks
   };
 
   return <Dialog title="New board" close={()=>{if(!busy)onClose()}}>
-   <label className="field"><span>Board folder</span>
-    <input data-autofocus list="board-folder-suggestions" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Tasks/Project"/>
-    <datalist id="board-folder-suggestions">{folders.map((f) => <option key={f} value={f + '/board'}/>)}</datalist>
-    <small className="muted">A new folder (or an existing one) that will hold the columns. Not the vault root.</small>
-   </label>
-   <label className="field"><span>Board title</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Leave empty to use the folder name"/></label>
+   <label className="field"><span>Board title</span><input data-autofocus value={title} onChange={e=>{const value=e.target.value;setTitle(value);if(!pathEdited)setPath((baseDir?baseDir+'/':'')+(value.replace(/[\\/:*?"<>|#^\[\]]/g,'').trim()||'New board'))}}/></label>
+   <details className="mindmap-location"><summary>Folder location</summary><label className="field"><span>Board folder</span>
+    <input list="board-folder-suggestions" value={path} onChange={e=>{setPathEdited(true);setPath(e.target.value)}}/>
+    <datalist id="board-folder-suggestions">{folders.map(f=><option key={f} value={f+'/board'}/>)}</datalist>
+    <small className="muted">Contains the board configuration, columns and task documents.</small>
+   </label></details>
    <label className="field"><span>Copy columns from an existing board (template)</span>
     <select value={template} onChange={(e) => setTemplate(e.target.value)}>
      <option value="">— blank board —</option>

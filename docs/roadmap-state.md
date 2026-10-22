@@ -219,3 +219,28 @@ no new branches unless explicitly requested. The validated memory-link fix,
 project-workflow design and file-list refresh button are consolidated together.
 Earlier branch/local-only status entries above are historical and superseded by
 this consolidation. AGENTS.md records the standing main-only workflow preference.
+
+## MCP access and creation UX (2026-10-22)
+
+- Redesigned MCP & agents into connection, token creation, token management and
+  expandable memory sections. A generated token replaces its own form in place,
+  with copy/dismiss controls and scoped access/expiry details. Creation/list errors
+  stay local; a list refresh failure never discards the one-time secret. Read-only
+  access remains the default; write and trash permissions are explicit choices.
+- New documents open in the Visual Markdown Editor with their first heading
+  selected; existing heading-driven automatic filename updates remain in place.
+- Board creation starts with a selected title and derives the folder until the
+  user explicitly edits the location. Existing column/template controls remain.
+- Added a cryptographically random UUID fallback for HTTP origins and applied it
+  to board/map/memo/memory-folder creation. No credential generation changed.
+- Default accent is #70a4fb in both themes. Explicit custom and blue presets remain
+  available; primary button text adapts to the accent for readable contrast.
+- Validation: 388 frontend tests passed; TypeScript and production build passed
+  (existing bundle-size warning). Playwright verified desktop/mobile token creation
+  and dismissal with a mocked API, read-only grants, no mobile horizontal overflow
+  and no browser errors. An in-memory editor check confirmed selected title
+  replacement produces the expected Markdown heading. No real tokens or vault
+  documents were created.
+- OpenCode delegation was attempted but its configured API was unavailable; the
+  implementation and UX review were completed directly. Changes remain on main;
+  no branch, push or release requested for this work.

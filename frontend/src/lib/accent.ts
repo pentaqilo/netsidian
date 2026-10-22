@@ -37,7 +37,8 @@ export function effectivePreset(accent: string, preset?: AccentPreset): AccentPr
 
 export function resolveAccent(theme: Theme, accent: string, preset?: AccentPreset): string {
   const p = effectivePreset(accent, preset);
-  if (p === 'default' || p === 'blue') return '#0561f5';
+  if (p === 'default') return '#70a4fb';
+  if (p === 'blue') return '#0561f5';
   if (p === 'neutral') return NEUTRAL[theme];
   const base = p === 'custom' && isHex(accent) ? accent : VIOLET[theme];
   if (contrastRatio(base, BG[theme]) >= MIN_CONTRAST) return base;

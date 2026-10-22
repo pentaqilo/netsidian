@@ -264,7 +264,7 @@ export function linkHrefAllowed(href:string):boolean{return LINK_URL.test(href)}
 // `bare` renders the editing surface without any toolbar chrome: mind-map
 // cards use it for inline editing, where the card frame itself is the
 // control surface. Every other VisualEditor usage keeps its toolbar.
-export function VisualEditor({compact=false,bare=false,autoFocus=false,liveTags=false,hintDisclosure=false,showLinkHint=true,draft,onTagSearch,onSourceMode,onUploadImages,onUploaded,attachments,notePath,docs=[],flushRef}:{compact?:boolean;bare?:boolean;autoFocus?:boolean;liveTags?:boolean;hintDisclosure?:boolean;showLinkHint?:boolean;flushRef?:{current:(()=>string|null)|null};docs?:DocMeta[];draft:DraftLike;onTagSearch?:(tag:string)=>void;onSourceMode?:()=>void;onUploadImages?:(files:File[])=>Promise<string[]>;onUploaded?:()=>void;attachments?:{path:string;url:string}[];notePath?:string}){
+export function VisualEditor({compact=false,bare=false,autoFocus=false,selectTitle=false,liveTags=false,hintDisclosure=false,showLinkHint=true,draft,onTagSearch,onSourceMode,onUploadImages,onUploaded,attachments,notePath,docs=[],flushRef}:{compact?:boolean;bare?:boolean;autoFocus?:boolean;selectTitle?:boolean;liveTags?:boolean;hintDisclosure?:boolean;showLinkHint?:boolean;flushRef?:{current:(()=>string|null)|null};docs?:DocMeta[];draft:DraftLike;onTagSearch?:(tag:string)=>void;onSourceMode?:()=>void;onUploadImages?:(files:File[])=>Promise<string[]>;onUploaded?:()=>void;attachments?:{path:string;url:string}[];notePath?:string}){
  const host=useRef<HTMLDivElement>(null),editor=useRef<Editor|null>(null),muting=useRef(false),imagesInput=useRef<HTMLInputElement>(null);
  const pendingVisual=useRef(false),inputReady=useRef(!bare);
  const flushCurrent=useRef<(()=>string|null)|null>(null);
@@ -290,13 +290,13 @@ export function VisualEditor({compact=false,bare=false,autoFocus=false,liveTags=
    ctx.get(listenerCtx).blur(()=>{flushCurrent.current?.()});
    ctx.get(listenerCtx).selectionUpdated((_ctx:any)=>{if(active)sync(view())});
   }).use(commonmark).use(gfm).use(listener).use($prose(()=>new Plugin({props:{handleKeyDown:(v,event)=>{if((event.ctrlKey||event.metaKey)&&event.code==='Space'){event.preventDefault();suggestRef.current(v,true);return true}return false}},view:()=>({update:(v,previous)=>{if(!muting.current&&!v.state.doc.eq(previous.doc))pendingVisual.current=true;if(!v.state.doc.eq(previous.doc)||!v.state.selection.eq(previous.selection))suggestRef.current(v)}})}))).use($prose(()=>createVisualPlugin())).use($prose(()=>hashtagPlugin(liveTags))).use($view(imageSchema.node,()=>visualImageView));
-  instance.create().then(()=>{if(!active){void instance.destroy();return}editor.current=instance;inputReady.current=true;instance.action(ctx=>{const v=ctx.get(editorViewCtx);v.setProps({editable:()=>draft.canEdit&&inputReady.current});if(autoFocus)v.focus()});setReady(true)}).catch(e=>{if(active)setError(String(e))});
+  instance.create().then(()=>{if(!active){void instance.destroy();return}editor.current=instance;inputReady.current=true;instance.action(ctx=>{const v=ctx.get(editorViewCtx);v.setProps({editable:()=>draft.canEdit&&inputReady.current});if(selectTitle&&v.state.doc.firstChild?.type.name==='heading'){v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc,1,1+v.state.doc.firstChild.content.size)))}if(autoFocus)v.focus()});setReady(true)}).catch(e=>{if(active)setError(String(e))});
   const off=draft.subscribe(()=>{if(!active||!editor.current)return;
    const live=view();if(live){live.setProps({editable:()=>draft.canEdit&&inputReady.current});sync(live)}
    if(draft.text===lastDraft.current)return;const next=prepareVisual(draft.text);preparedRef.current=next;lastDraft.current=draft.text;if(next.markdown===lastMarkdown.current)return;const current=view(),anchor=current?.state.selection.from||1;muting.current=true;try{editor.current.action(replaceAll(next.markdown));const updated=view();if(updated)updated.dispatch(updated.state.tr.setSelection(TextSelection.near(updated.state.doc.resolve(Math.min(anchor,updated.state.doc.content.size)))));lastMarkdown.current=next.markdown}finally{muting.current=false}
   });
   return()=>{flush();active=false;off();if(flushCurrent.current===flush)flushCurrent.current=null;if(flushRef?.current===flush)flushRef.current=null;editor.current=null;setLinkEdit(null);setRequest(null);void instance.destroy()};
- },[draft,safe,prepared,flushRef,autoFocus,bare,liveTags]);
+ },[draft,safe,prepared,flushRef,autoFocus,selectTitle,bare,liveTags]);
  // Fresh resolver per attachment-list change: relative markdown image paths
  // resolve exactly like the read view (folder-relative, then fuzzy basename).
  useEffect(()=>{

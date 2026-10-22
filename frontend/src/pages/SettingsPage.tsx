@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../api/client";
-import type { KeyRecord } from "../api/client";
+import {AgentTokens} from "../components/AgentTokens";
 import { useApp } from "../AppState";
 import { FolderPicker } from "../components/FolderPicker";
 import { StoragePanel } from "../components/StoragePanel";
@@ -15,24 +15,14 @@ const errText = (e: unknown) =>
 export default function SettingsPage({appearance,interaction,initialVault,agentRequest=0,onAgentOpened,accountRequest=0,onAccountOpened}:{appearance?:ReactNode;interaction?:ReactNode;initialVault?:string;agentRequest?:number;onAgentOpened?:()=>void;accountRequest?:number;onAccountOpened?:()=>void}) {
  const [section,setSection]=useState(()=>location.pathname.endsWith('/settings/mcp')?'agents':localStorage.getItem("netsidian.settings.section")||"account");
  useEffect(()=>{if(location.pathname.endsWith('/settings/mcp'))setSection('agents')},[location.pathname]);
-  const { me, settings, spaces, refresh } = useApp();
+  const { me, settings, refresh } = useApp();
   useEffect(()=>{if(accountRequest){setSection("account");localStorage.setItem("netsidian.settings.section","account");onAccountOpened?.()}},[accountRequest]);
 
   useEffect(()=>{const allowed=['account','ui',...(interaction?['interaction']:[]),'storage','agents',...(me?.isOperator?['system',...(settings?.authMode==='none'?[]:['users'])]:[])];if(!allowed.includes(section))setSection('account')},[section,me?.isOperator,settings?.authMode]);
-  const [keyError,setKeyError]=useState('');
-  const [keys, setKeys] = useState<KeyRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [newLabel, setNewLabel] = useState("");
-  const [secret, setSecret] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [keyVaults,setKeyVaults]=useState<string[]>([]);
-  const [keyAccess,setKeyAccess]=useState('read');
- const [allowTrash,setAllowTrash]=useState(false);
- useEffect(()=>{if(initialVault)setKeyVaults([initialVault])},[initialVault]);
- useEffect(()=>{if(agentRequest){setSection('agents');localStorage.setItem('netsidian.settings.section','agents');if(initialVault)setKeyVaults([initialVault]);onAgentOpened?.()}},[agentRequest,initialVault]);
-  const [keyDays,setKeyDays]=useState(90);
+ useEffect(()=>{if(agentRequest){setSection('agents');localStorage.setItem('netsidian.settings.section','agents');onAgentOpened?.()}},[agentRequest]);
   const [pwCurrent,setPwCurrent]=useState(''),[pwNew,setPwNew]=useState(''),[pwConfirm,setPwConfirm]=useState(''),[pwBusy,setPwBusy]=useState(false),[pwCode,setPwCode]=useState('');
-  const [copied,setCopied]=useState(false),[vaultQuery,setVaultQuery]=useState(''),[connection,setConnection]=useState(''),[checking,setChecking]=useState(false),[integration,setIntegration]=useState<{storage:string;oauthConfigured:boolean;oauthLabel?:string;backendReachable:boolean}|null>(null);
+  const [connection,setConnection]=useState(''),[checking,setChecking]=useState(false),[integration,setIntegration]=useState<{storage:string;oauthConfigured:boolean;oauthLabel?:string;backendReachable:boolean}|null>(null);
   // Second factor (TOTP) state for the account security panel.
   const [totp,setTotp]=useState<api.TOTPStatus|null>(null);
   const [enroll,setEnroll]=useState<api.TOTPEnrollmentView|null>(null);
@@ -56,51 +46,11 @@ export default function SettingsPage({appearance,interaction,initialVault,agentR
     }
   };
 
-  const refetchKeys = useCallback(async () => {
-    setKeyError('');setKeys(null);
-    try {
-      const r = await api.listKeys();
-      setKeys(r.keys);
-    } catch (e) {
-      setError(errText(e));
-      setKeyError(errText(e));setKeys(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refetchKeys();
-  }, [refetchKeys]);
-
   // Load second-factor status whenever the account panel is shown.
   useEffect(() => {
     if (me?.canChangePassword) { api.getTOTPStatus().then(setTotp).catch(() => setTotp(null)); }
     else { setTotp(null); setEnroll(null); }
   }, [me?.userId, me?.canChangePassword, section]);
-
-  const create = async () => {
-    if (!newLabel.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const k = await api.createKey(newLabel.trim(), {spaceIds:keyVaults,scopes:['documents:read','search:read','graph:read','history:read','attachments:read',...(keyAccess==='write'?['documents:write','attachments:write',...(allowTrash?['documents:delete']:[])]:[])],expiresInDays:keyDays});
-      setSecret(k.secret);setCopied(false);
-      setNewLabel("");
-      await refetchKeys();
-    } catch (e) {
-      setError(errText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const revoke = async (id: string) => {
-    try {
-      await api.revokeKey(id);
-      await refetchKeys();
-    } catch (e) {
-      window.alert(errText(e));
-    }
-  };
 
   // Local-account password change. The server revokes every session and
   // personal token atomically, so on success the app must re-authenticate.
@@ -252,76 +202,12 @@ export default function SettingsPage({appearance,interaction,initialVault,agentR
         </p>
 
 </section>
-      <section id="settings-panel-agents" role="tabpanel" aria-labelledby="settings-tab-agents" hidden={section!=="agents"} className="agent-settings" aria-label="Agent access"><MCPSetup/><h3>Personal access tokens for agents</h3><p>Choose the vaults, permissions and lifetime your agent needs.</p>
-      {secret && (
-        <div className="banner">
-          New key secret: <code>{secret}</code>
-          <br />
-          <strong>Shown once — copy it now</strong> <button className="btn small" onClick={()=>void navigator.clipboard.writeText(secret).then(()=>setCopied(true)).catch(()=>setError('Copy failed. Select the token and copy it manually.'))}>{copied?'Copied':'Copy token'}</button><button className="btn small" onClick={()=>{setSecret(null);setCopied(false)}}>Hide</button>
-        </div>
-      )}
-      <p className="muted">
-        Key format <code>nsd_&lt;keyid&gt;_&lt;secret&gt;</code>; send it as{" "}
-        <code>Authorization: Bearer</code>.
-      </p>
-      {keyError ? (<div role="alert"><p>Tokens could not load. {keyError}</p><button className="btn" onClick={()=>void refetchKeys()}>Retry tokens</button></div>) : keys === null ? (
-        <p className="muted">Loading…</p>
-      ) : keys.length === 0 ? (
-        <p className="muted">No access tokens yet.</p>
-      ) : (
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Scopes</th>
-              <th>Vaults</th><th>Created / expires</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id}>
-                <td>{k.label}</td>
-                <td className="muted">{k.scopes && k.scopes.length > 0 ? k.scopes.join(", ") : "full"}</td>
-                <td>{k.spaceIds?.length?k.spaceIds.map(id=>spaces.find(v=>v.space.id===id)?.space.name||id).join(', '):'All accessible vaults'}</td><td className="muted">{new Date(k.createdAt).toLocaleDateString()}<br/>{k.expiresAt?'Expires '+new Date(k.expiresAt).toLocaleString():'No expiry'}</td>
-                <td>{k.revokedAt?'Revoked':k.expiresAt&&Date.parse(k.expiresAt)<=Date.now()?'Expired':'Active'}</td>
-                <td className="right">
-                  {!k.revokedAt && (
-                    <button className="btn small danger" onClick={() => void revoke(k.id)}>
-                      Revoke
-                    </button>
-                  )}
-                {(k.revokedAt||(k.expiresAt&&Date.parse(k.expiresAt)<=Date.now()))&&<button className="btn small" onClick={()=>{setNewLabel(k.label+' replacement');setKeyVaults(k.spaceIds?.filter(id=>spaces.some(v=>v.space.id===id))||[]);document.getElementById('new-token-label')?.focus()}}>Replace</button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <p><a href="/api/v1/openapi.json" target="_blank" rel="noreferrer">Agent API contract</a> · Start with <code>GET /api/v1/agent/whoami</code> to discover accessible vaults and capabilities.</p>
-      <fieldset><legend>Token vault access · {keyVaults.length} selected</legend><input aria-label="Find token vaults" className="input" placeholder="Find a vault…" value={vaultQuery} onChange={e=>setVaultQuery(e.target.value)}/><div className="token-selected">{keyVaults.map(id=><button className="btn small" key={id} aria-label={'Remove '+(spaces.find(v=>v.space.id===id)?.space.name||id)+' from token access'} onClick={()=>setKeyVaults(v=>v.filter(x=>x!==id))}>{spaces.find(v=>v.space.id===id)?.space.name||id} ×</button>)}</div><div className="token-vault-list">{spaces.filter(({space})=>space.name.toLowerCase().includes(vaultQuery.toLowerCase())).map(({space})=><label key={space.id}><input type="checkbox" checked={keyVaults.includes(space.id)} onChange={e=>setKeyVaults(v=>e.target.checked?[...v,space.id]:v.filter(id=>id!==space.id))}/> {space.name}</label>)}</div></fieldset>
-      <label>Permissions <select className="input" value={keyAccess} onChange={e=>setKeyAccess(e.target.value)}><option value="read">Read only</option><option value="write">Read and write documents</option></select></label>
-      {keyAccess==='write'&&<label><input type="checkbox" checked={allowTrash} onChange={e=>setAllowTrash(e.target.checked)}/> Allow moving documents to trash</label>}
- <label>Expires after <select className="input" value={keyDays} onChange={e=>setKeyDays(Number(e.target.value))}>{[7,30,90,365].map(n=><option key={n} value={n}>{n} days</option>)}</select></label>
-      <div style={{ display: "flex", gap: 8, maxWidth: 420, marginTop: 12 }}>
-        <input
-          className="input"
-          id="new-token-label" aria-label="New token label" placeholder="New key label"
-          value={newLabel}
-          onChange={(e) => setNewLabel(e.target.value)}
-        />
-        <button
-          className="btn primary"
-          disabled={busy || !newLabel.trim() || !keyVaults.length}
-          onClick={() => void create()}
-        >
-          {busy ? "Creating…" : "Create token"}
-        </button>
-      </div>
-
-      <p className="token-summary" role="status">{keyVaults.length} vaults · {keyAccess==='read'?'Read only':'Read and write documents'} · Expires in {keyDays} days</p>
-      <details><summary>Connect your agent</summary><p>Set your token as NETSIDIAN_TOKEN and use this discovery request. Replace the example URL with your instance.</p><pre className="agent-example"><code>{`curl --fail --header "Authorization: Bearer $NETSIDIAN_TOKEN" \
-  ${location.origin}/api/v1/agent/whoami`}</code></pre><button className="btn small" onClick={()=>void navigator.clipboard.writeText(`curl --fail --header "Authorization: Bearer $NETSIDIAN_TOKEN" ${location.origin}/api/v1/agent/whoami`).catch(()=>setError('Copy failed. Select and copy the example.'))}>Copy client example</button></details><AgentMemoryFolder initialVault={initialVault}/></section>
+      <section id="settings-panel-agents" role="tabpanel" aria-labelledby="settings-tab-agents" hidden={section!=="agents"} className="agent-settings" aria-label="Agent access">
+        <header className="agent-settings-heading"><h2>MCP & agents</h2><p className="muted">Connect an agent and choose exactly what it can access.</p></header>
+        <div className="agent-connect-card"><MCPSetup compact inSettings/></div>
+        <AgentTokens initialVault={initialVault} request={agentRequest}/>
+        <details className="agent-connect-card"><summary>Agent memory & project knowledge</summary><AgentMemoryFolder initialVault={initialVault}/></details>
+      </section>
       {me?.isOperator&&<section id="settings-panel-system" role="tabpanel" aria-labelledby="settings-tab-system" hidden={section!=="system"} aria-label="Integration status"><h3>Integration status</h3><p>Authentication: <strong>{settings?.authMode}</strong> · Local folder access: <strong>{settings?.runtime.storage.folderPicker!=='none'?'Available':'Disabled'}</strong></p><p className="muted">A successful instance check verifies your session and API access. S3 and OAuth credentials are managed in the server configuration.</p><button className="btn" disabled={checking} onClick={async()=>{setChecking(true);setConnection('');try{await api.getMe();if(me?.isOperator){const response=await fetch('/api/v1/me/integrations');if(!response.ok)throw new Error('Integration check unavailable');const status=await response.json();setIntegration(status);setConnection(status.backendReachable?'Session, database and document storage are reachable.':'Session verified; database or document storage is unavailable.')}else setConnection('Session and API connection verified.')}catch(e){setConnection(errText(e))}finally{setChecking(false)}}}>{checking?'Checking…':'Check instance connection'}</button><p role="status">{connection}</p>{integration&&<p>Document storage: <strong>{integration.storage==='s3'?'S3 compatible':'Local'}</strong> · OAuth: <strong>{integration.oauthConfigured?(integration.oauthLabel||'Configured'):'Not configured'}</strong></p>}<details><summary>Server setup</summary><p>Storage: set NETSIDIAN_STORAGE_DRIVER=s3 and configure the S3 bucket, region and credentials. OAuth: configure NETSIDIAN_AUTH_MODE, NETSIDIAN_OIDC_ISSUER, client ID, client secret and public URL. Restart the server after changing configuration.</p><p>The backend check is read only. OAuth configuration status does not verify a complete sign-in flow.</p><a href="/api/v1/openapi.json" target="_blank" rel="noreferrer">Instance API and capabilities</a></details></section>}
       {me?.isOperator&&settings?.authMode!=='none'&&<section id="settings-panel-users" role="tabpanel" aria-labelledby="settings-tab-users" hidden={section!=="users"}><AdminPanel userId={me.userId} defaultOpen/></section>}
 <section id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" hidden={section!=="storage"}><StoragePanel onFolderBrowse={localPick?()=>setFolderOpen(true):undefined}/>

@@ -41,7 +41,7 @@ it('keeps the favicon aligned with resolved custom, theme, preset and reset colo
   expect(colors()).toEqual(['#20201E', '#6840bd']);
   root.style.setProperty('--accent', resolveAccent('light', '', 'default'));
   await new Promise(resolve => setTimeout(resolve, 0));
-  expect(colors()).toEqual(['#20201E', '#0561f5']);
+  expect(colors()).toEqual(['#20201E', '#70a4fb']);
 });
 
 it('restores the static fallback and stops updates when disposed', async () => {
@@ -60,7 +60,7 @@ it('uses the supplied n-14 geometry consistently in both themes and the static f
   const paths=[...new DOMParser().parseFromString(source,'image/svg+xml').querySelectorAll('path')];
   expect(BRAND_BODY).toBe(paths.filter(p=>p.getAttribute('fill')==='currentColor').map(p=>p.getAttribute('d')).join(' '));
   expect(BRAND_ACCENT).toBe(paths.find(p=>p.getAttribute('fill')!=='currentColor')?.getAttribute('d'));
-  const generated=new DOMParser().parseFromString(brandSVG(theme,'#0561f5'),'image/svg+xml');
+  const generated=new DOMParser().parseFromString(brandSVG(theme,'#70a4fb'),'image/svg+xml');
   expect(generated.querySelector('path')?.getAttribute('fill')).toBe(theme==='dark'?'#FFFFFF':'#20201E');
  }
  const fallback=fallbackLogo;

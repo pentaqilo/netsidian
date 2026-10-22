@@ -325,3 +325,20 @@ default) was bumped and custom release notes were prepared in
 - Refreshed dark/light/mobile tree screenshots. Playwright verified tick size,
   endpoint alignment, no arrow overlap, keyboard/collapse behavior, mobile width
   and virtualization; no browser errors. CSS-only change, local on main.
+
+### Published 0.5.1
+
+- Published: https://github.com/pentaqilo/netsidian/releases/tag/0.5.1.
+- Release commit/tag: 30620c5 / 0.5.1, pushed to main and GitHub. The release
+  bundles the Graph title rename, the file-explorer tree guides and the
+  last-child connector tick, plus refreshed screenshots.
+- Workflow 39829740114 succeeded: four desktop targets (with frontend and backend
+  tests on the Linux job), Helm packaging with strict lint, multi-platform Docker
+  publish and release publication. All seven expected assets are present: four
+  desktop archives, netsidian-0.5.1.tgz chart, docker-image.txt and SHA256SUMS.
+- Custom release notes from .github/release-notes/0.5.1.md were used verbatim.
+- Docker: ghcr.io/pentaqilo/netsidian:0.5.1, immutable multi-platform digest
+  sha256:fe0768aeac18baa77410c97e8eda15393458fd2de92f2458b622d7b652589cb4.
+- Before tagging, the frontend typecheck (tsc --noEmit) and the fileTreeRows tests
+  passed locally; the version bump touched only constant/metadata strings. The lab
+  instance was updated to 0.5.1 (healthz reports version 0.5.1).

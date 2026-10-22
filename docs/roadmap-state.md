@@ -1,6 +1,6 @@
 # Implementation state
 
-Updated: 2026-10-21. Target release: Netsidian 0.4.0.
+Updated: 2026-10-22. Latest release: Netsidian 0.5.0.
 
 ## Implemented
 
@@ -244,3 +244,27 @@ this consolidation. AGENTS.md records the standing main-only workflow preference
 - OpenCode delegation was attempted but its configured API was unavailable; the
   implementation and UX review were completed directly. Changes remain on main;
   no branch, push or release requested for this work.
+
+## Release 0.5.0 (2026-10-22)
+
+The consolidated main-branch work above (memory internal-link fix, file-list
+refresh button, MCP access redesign and creation UX) is included in 0.5.0.
+Version metadata (Go constant, frontend package/lock, Helm chart, workflow
+default) was bumped and custom release notes were prepared in
+.github/release-notes/0.5.0.md.
+
+### Published 0.5.0
+
+- Published: https://github.com/pentaqilo/netsidian/releases/tag/0.5.0.
+- Release commit/tag: 4977d86 / 0.5.0, pushed to main and GitHub.
+- Workflow 39777404810 succeeded: four desktop targets (with frontend tests and
+  backend service tests on the Linux job), Helm packaging with strict lint,
+  multi-platform Docker publish and release publication. All seven expected
+  assets are present: four desktop archives, netsidian-0.5.0.tgz chart,
+  docker-image.txt and SHA256SUMS.
+- Custom release notes from .github/release-notes/0.5.0.md were used verbatim.
+- Docker: ghcr.io/pentaqilo/netsidian:0.5.0, immutable multi-platform digest
+  sha256:8a2714669638d1006b37c456281ea835530341db27593985d2081e9fbde04226.
+- Local Go toolchain was unavailable for a pre-tag build; the release workflow
+  ran the full backend and frontend test suites on its Linux job before
+  packaging, and the version bump touched only constant/metadata strings.

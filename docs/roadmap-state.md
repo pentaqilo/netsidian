@@ -292,3 +292,28 @@ default) was bumped and custom release notes were prepared in
   captures came from a source-built image (netsidian:shots) in the same isolated
   tmpfs container, seeded with 30 cross-linked notes across six folders; the
   container and its data were removed afterwards.
+
+## File explorer hierarchy and creation icons (2026-10-22)
+
+- Replaced repeating depth stripes with guides computed from visible sibling and
+  ancestor relationships. Guides stop at the final child's centre and do not
+  continue down that child's subtree. Folder stems leave space below disclosure
+  arrows; 18px indentation separates guide, disclosure and file-icon lanes.
+- Guide metadata is calculated before virtual slicing, preserving hierarchy when
+  ancestors are scrolled out of view. Collapsed/empty folders have no hanging
+  stems; empty folders no longer advertise an expand control.
+- New document/folder icons use recognisable outlines with a separate plus mark,
+  consistently in the explorer toolbar and creation menus. Existing tooltip and
+  accessible action labels remain. Tree keyboard arrows now stay on leaf/root
+  items when no child/parent navigation is available, following the W3C APG tree
+  pattern; multi-selection is declared explicitly.
+- Playwright screenshots: docs/screenshots/file-tree-dark.png,
+  docs/screenshots/file-tree-light.png and docs/screenshots/file-tree-mobile.png.
+  Captured the actual FileTree component with representative in-memory fixtures;
+  no vault writes. Browser checks verify guide endpoints, no guide/arrow overlap,
+  collapse/expand, keyboard navigation, creation target, mobile width and a
+  virtualized 500-document tree; no browser errors.
+- Validation: all 390 frontend tests and the production build passed. Vite reports
+  the existing bundle-size warning. Screenshot geometry checks found zero arrow
+  overlaps and zero guides extending below the last child.
+- Work is on main, with no new branch, commit, push or release for this request.

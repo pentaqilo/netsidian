@@ -25,7 +25,7 @@ export function indexFileTree(docs:DocMeta[],folders:string[],attachments:{path:
   node.docs.sort((a,b)=>sortBy==='mtime'?b.updatedAt.localeCompare(a.updatedAt):collator.compare(a.path,b.path));
   node.atts.sort((a,b)=>collator.compare(a.path,b.path));
  }
- return {root,folders:[...dirs.keys()].filter(Boolean)};
+ return {root,folders:[...dirs.keys()].filter(Boolean),branches:new Set([...dirs.values()].filter(node=>node.path&&(node.children.length||node.docs.length||node.atts.length)).map(node=>node.path))};
 }
 export function flattenFileTree(index:ReturnType<typeof indexFileTree>,collapsed:Set<string>,filter=false){
  const rows:TreeRow[]=[];
@@ -34,4 +34,29 @@ export function flattenFileTree(index:ReturnType<typeof indexFileTree>,collapsed
   for(const doc of node.docs)rows.push({kind:'doc',key:'d:'+doc.id,doc,name:doc.tags?.includes('memo')?(doc.title||doc.path):doc.path.split('/').pop()?.replace(/\.md$/i,'')||doc.path,depth});
   for(const att of node.atts)rows.push({kind:'att',key:'a:'+att.path,path:att.path,name:att.path.split('/').pop()||att.path,depth});
  };walk(index.root,0);return rows;
+}
+
+// Resolve guides from the complete visible hierarchy, before virtualization.
+// A last sibling ends its parent's guide at its centre; descendants of that
+// sibling must not extend that guide into the following root section.
+export function fileTreeGuides(rows:TreeRow[]){
+ const nextSibling=new Set<number>(),stack:number[]=[];
+ rows.forEach((row,i)=>{
+  while(stack.length&&rows[stack[stack.length-1]].depth>=row.depth){
+   const previous=stack.pop()!;
+   if(rows[previous].depth===row.depth)nextSibling.add(previous);
+  }
+  stack.push(i);
+ });
+ const ancestors:number[]=[];
+ return rows.map((row,i)=>{
+  ancestors.length=row.depth;
+  const guides:{level:number;end:boolean}[]=[];
+  for(let level=0;level<row.depth;level++){
+   if(level===row.depth-1)guides.push({level,end:!nextSibling.has(i)});
+   else if(nextSibling.has(ancestors[level+1]))guides.push({level,end:false});
+  }
+  ancestors[row.depth]=i;
+  return {guides,stem:row.kind==='folder'&&rows[i+1]?.depth>row.depth};
+ });
 }

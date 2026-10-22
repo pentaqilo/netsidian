@@ -317,3 +317,11 @@ default) was bumped and custom release notes were prepared in
   the existing bundle-size warning. Screenshot geometry checks found zero arrow
   overlaps and zero guides extending below the last child.
 - Work is on main, with no new branch, commit, push or release for this request.
+
+### Last-child connector tick (2026-10-22)
+
+- Added a 5px horizontal tick pointing right at each last-child guide endpoint,
+  aligned with the row centre. Other rows retain vertical-only guides.
+- Refreshed dark/light/mobile tree screenshots. Playwright verified tick size,
+  endpoint alignment, no arrow overlap, keyboard/collapse behavior, mobile width
+  and virtualization; no browser errors. CSS-only change, local on main.

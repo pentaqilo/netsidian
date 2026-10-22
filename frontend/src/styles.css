@@ -223,7 +223,8 @@ img.missing-embed{opacity:.4;border:1px dashed var(--border)}
    Terminating at the last child's centre also works across virtual slices. */
 .tree-guides{position:absolute;inset:0;pointer-events:none;overflow:visible!important}
 .tree-guide{position:absolute;top:0;bottom:0;width:1px;background:color-mix(in srgb,var(--text-dim),transparent 76%);pointer-events:none}
-.tree-guide.tree-guide-end{bottom:50%}
+.tree-guide.tree-guide-end{bottom:50%;overflow:visible}
+.tree-guide-end::after{content:"";position:absolute;left:0;bottom:0;width:5px;height:1px;background:inherit;pointer-events:none}
 .tree-guide.tree-guide-stem{top:calc(50% + 8px)}
 .file-row>svg,.folder-icon{flex-shrink:0}
 .document-tab.transient>button:first-child span:first-of-type{font-style:italic}

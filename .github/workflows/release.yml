@@ -7,7 +7,7 @@ on:
       version:
         description: Existing release tag to build
         required: true
-        default: '0.5.1'
+        default: '0.6.0'
 env:
   RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
 permissions:

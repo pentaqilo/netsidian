@@ -836,6 +836,9 @@ func (s *Services) ReconcileOperations(ctx context.Context) (resolved int, block
 }
 
 func (s *Services) reconcileOne(ctx context.Context, op *domain.Operation) (resolved, blocked bool) {
+	if op.Kind == domain.OperationKind("memory_consolidate") {
+		return s.reconcileMemoryConsolidation(ctx, op)
+	}
 	doc, err := s.Docs.Document(ctx, op.DocumentID)
 	if err != nil {
 		return false, true

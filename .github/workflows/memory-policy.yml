@@ -1,0 +1,25 @@
+name: Memory policy consistency
+on:
+  push:
+    branches: [main]
+    paths: ['skills/agent-memory/**', 'scripts/*memory*', 'frontend/src/lib/memoryPolicy.generated.ts', 'internal/memorypolicy/**', 'frontend/src/lib/agentSkill*', '.github/workflows/memory-policy.yml']
+  pull_request:
+    paths: ['skills/agent-memory/**', 'scripts/*memory*', 'frontend/src/lib/memoryPolicy.generated.ts', 'internal/memorypolicy/**', 'frontend/src/lib/agentSkill*', '.github/workflows/memory-policy.yml']
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/generate-memory-policy.py --check
+      - run: python scripts/test-local-memory.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix frontend
+      - run: python -m pip install -r scripts/memory-tokenizer-requirements.txt
+      - run: python scripts/check-memory-budgets.py --require-tokenizer

@@ -9,6 +9,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/pentaqilo/netsidian/internal/domain"
@@ -55,6 +56,105 @@ func (s *Server) handleAgentContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, resp)
+}
+
+// ---- agent memory surface ----
+// REST mirrors of the governed memory services so non-MCP agents get
+// the same typed recall filters, guarded revisions and resumable
+// consolidation. Idempotency-Key replays identical requests.
+
+func (s *Server) handleMemoryRecall(w http.ResponseWriter, r *http.Request) {
+	if !s.agentAllow(w, r) {
+		return
+	}
+	var req service.MemoryRecallInput
+	if !decodeMemory(w, r, &req) {
+		return
+	}
+	res, err := s.Svc.RecallMemory(r.Context(), actorOf(r), spaceID(r), &req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, res)
+}
+
+func (s *Server) handleMemoryRemember(w http.ResponseWriter, r *http.Request) {
+	if !s.agentAllow(w, r) {
+		return
+	}
+	var req memoryRememberRequest
+	if !decodeMemory(w, r, &req) {
+		return
+	}
+	receipt, err := s.Svc.RememberMemory(r.Context(), actorOf(r), spaceID(r), req.input(), r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, receipt)
+}
+
+func (s *Server) handleMemoryRevise(w http.ResponseWriter, r *http.Request) {
+	if !s.agentAllow(w, r) {
+		return
+	}
+	var req service.MemoryReviseInput
+	if !decodeMemory(w, r, &req) {
+		return
+	}
+	receipt, err := s.Svc.ReviseMemory(r.Context(), actorOf(r), spaceID(r), &req, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, receipt)
+}
+
+func (s *Server) handleMemoryConsolidate(w http.ResponseWriter, r *http.Request) {
+	if !s.agentAllow(w, r) {
+		return
+	}
+	var req service.MemoryConsolidateInput
+	if !decodeMemory(w, r, &req) {
+		return
+	}
+	receipt, err := s.Svc.ConsolidateMemory(r.Context(), actorOf(r), spaceID(r), &req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, receipt)
+}
+
+func (s *Server) handleMemoryDerived(w http.ResponseWriter, r *http.Request) {
+	if !s.agentAllow(w, r) {
+		return
+	}
+	query := r.URL.Query()
+	limit, budget := 0, 0
+	if text := query.Get("limit"); text != "" {
+		var err error
+		limit, err = strconv.Atoi(text)
+		if err != nil {
+			writeErr(w, domain.Invalid("limit must be an integer"))
+			return
+		}
+	}
+	if text := query.Get("maxBytes"); text != "" {
+		var err error
+		budget, err = strconv.Atoi(text)
+		if err != nil {
+			writeErr(w, domain.Invalid("maxBytes must be an integer"))
+			return
+		}
+	}
+	res, err := s.Svc.DerivedStatusWithInput(r.Context(), actorOf(r), spaceID(r), service.MemoryDerivedInput{Cursor: query.Get("cursor"), DocumentID: query.Get("documentId"), Limit: limit, MaxBytes: budget})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, res)
 }
 
 func (s *Server) handleChangesSince(w http.ResponseWriter, r *http.Request) {

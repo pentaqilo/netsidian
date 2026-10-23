@@ -1,0 +1,95 @@
+{
+  "tokenizer": "tiktoken==0.12.0/cl100k_base",
+  "surfaces": {
+    "core": {
+      "utf8Bytes": 3148,
+      "tokens": 592,
+      "tokenCeiling": 700,
+      "byteCeiling": 4300
+    },
+    "server-guidance": {
+      "utf8Bytes": 964,
+      "tokens": 169,
+      "tokenCeiling": 200,
+      "byteCeiling": 1200
+    },
+    "adapter-local": {
+      "utf8Bytes": 1850,
+      "tokens": 378,
+      "tokenCeiling": 600,
+      "byteCeiling": 3200
+    },
+    "adapter-remote": {
+      "utf8Bytes": 1270,
+      "tokens": 226,
+      "tokenCeiling": 600,
+      "byteCeiling": 3200
+    },
+    "adapter-netsidian": {
+      "utf8Bytes": 2050,
+      "tokens": 412,
+      "tokenCeiling": 600,
+      "byteCeiling": 3200
+    },
+    "single-normal-netsidian": {
+      "utf8Bytes": 5540,
+      "tokens": 1071,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    },
+    "single-normal-local": {
+      "utf8Bytes": 5335,
+      "tokens": 1037,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    },
+    "single-normal-remote": {
+      "utf8Bytes": 4757,
+      "tokens": 884,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    },
+    "single-unicode-netsidian": {
+      "utf8Bytes": 5783,
+      "tokens": 1180,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    },
+    "single-unicode-local": {
+      "utf8Bytes": 5578,
+      "tokens": 1146,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    },
+    "single-unicode-remote": {
+      "utf8Bytes": 5000,
+      "tokens": 993,
+      "tokenCeiling": 1200,
+      "byteCeiling": 7000
+    }
+  },
+  "catalog": {
+    "tools": {
+      "utf8Bytes": 20566,
+      "tokens": 4334,
+      "baseline": {
+        "utf8Bytes": 11064,
+        "tokens": 2337
+      }
+    },
+    "instructions": {
+      "utf8Bytes": 1155,
+      "tokens": 207,
+      "baseline": {
+        "utf8Bytes": 446,
+        "tokens": 84
+      }
+    }
+  },
+  "workflow": {
+    "calls": 5,
+    "serializedResultBytes": 2018,
+    "serializedResultTokens": 591,
+    "elapsedMicrosSingleObservation": 39512
+  }
+}

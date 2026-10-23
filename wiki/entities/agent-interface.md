@@ -35,3 +35,13 @@ The agent retrieval surface has its own per-principal limiter (`agent:<userID>`)
 
 ## Related
 [[http-api]] · [[architecture]] · [[drafts-and-revisions]] · [[roles-sharing-admin]]
+
+## Portable evidence-backed memory
+
+Canonical policy: `skills/agent-memory/SKILL.md` and its local/remote/Netsidian
+adapters. Run `python scripts/generate-memory-policy.py --check` to verify the
+Go/frontend bindings, and `python scripts/test-local-memory.py` for local CAS
+and confinement tests. Memory reasoning runs in the client agent. The service
+enforces ordinary vault permissions, revisions and persistence receipts; a
+folder/scope identity does not grant access. See
+[architecture decision](../../docs/agent-memory-architecture.md).

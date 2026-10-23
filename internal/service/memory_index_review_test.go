@@ -22,9 +22,10 @@ func TestMemoryReviewResponseBudgetAndContinuation(t *testing.T) {
 	}
 	offset := 0
 	revision := ""
+	queryHash := ""
 	seen := map[string]bool{}
 	for page := 0; page < 10; page++ {
-		result, err := h.svc.RecallMemory(ctx, h.actor, h.space, &MemoryRecallInput{MaxBytes: 1200, Limit: 20, Offset: offset, Revision: revision})
+		result, err := h.svc.RecallMemory(ctx, h.actor, h.space, &MemoryRecallInput{MaxBytes: 1200, Limit: 20, Offset: offset, Revision: revision, QueryHash: queryHash})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +47,7 @@ func TestMemoryReviewResponseBudgetAndContinuation(t *testing.T) {
 		}
 		offset = result.NextOffset
 		revision = result.IndexRevision
+		queryHash = result.QueryHash
 	}
 	if len(seen) != 8 {
 		t.Fatalf("only retrieved %d of 8", len(seen))

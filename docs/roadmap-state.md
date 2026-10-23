@@ -342,3 +342,46 @@ default) was bumped and custom release notes were prepared in
 - Before tagging, the frontend typecheck (tsc --noEmit) and the fileTreeRows tests
   passed locally; the version bump touched only constant/metadata strings. The lab
   instance was updated to 0.5.1 (healthz reports version 0.5.1).
+
+## Evidence-backed portable agent memory (2026-10-23, implemented)
+
+- Implemented the external guide against baseline 5603319 directly on main.
+  Validation completed before the separately requested 0.6.0 publication.
+- Policy 1.0.0: portable core, separate local/remote/Netsidian adapters,
+  references, tested POSIX helper, reproducible Go/TypeScript projections,
+  progressive policy tool/resources and artifact-budget CI.
+- Memory schema 2 preserves legacy notes, unknown stored fields and unrelated
+  bytes. Typed recall filters, temporal/evidence metadata, stable historical claim
+  identity, explicit clearing, correction/retraction and generation-pinned cursors.
+- Consolidation: one managed topical target, pinned sources/index changes,
+  no-write dry-run, durable frozen plan/bytes, owned child revision recovery,
+  honest partial receipts, read-only recovery status and startup reconciliation.
+  Manual edits are preserved. SQLite receipt/generation publication is atomic;
+  individual document steps remain separate commits.
+- Derived status uses bounded indexed metadata plus transitive claim checks,
+  detects source edits/retraction/trash/cycles/provisional state, and never runs
+  an unattended LLM or automatically regenerates knowledge.
+- Settings separate destination/provider/location/audience/scope/mode, preserve
+  legacy adoption and offer self-contained copy or ZIP. Local writes require the
+  packaged helper; generic remote support depends on actual provider capabilities.
+- Validation passed: full server-tag Go internal suite, Go vet and server build;
+  397 frontend tests and production build; policy generation, pinned-tokenizer
+  ceilings, three local helper tests and skill/ZIP checks. Browser checks covered
+  desktop/mobile adoption, destination invalidation and download without knowledge
+  writes. Real S3 adapter/service exercised against isolated HTTP object fixtures.
+- Independent crash, lost-receipt, changed-payload, manual/external-edit,
+  concurrency, permission, cursor, merged-validation and dependency fixtures pass.
+  Qualitative strong/smaller-model policy review is distinct from model-over-live-
+  MCP performance. Total measured context grew with new schemas; no reduction
+  or production benchmark claim is made.
+- Exact contracts, compatibility/downgrade limits and measured context are in
+  docs/agent-memory-architecture.md, docs/mcp.md,
+  docs/agent-memory-validation.md and docs/agent-memory-context-metrics.json.
+- Deferred by the guide: embeddings, background LLM/scheduling, replication,
+  cross-vault evidence, global entity resolution and project-workflow redesign.
+  Native GTK/WebKit build and live AWS/remote-provider deployments were not tested.
+
+## Release 0.6.0 (2026-10-23, prepared)
+
+- Evidence-backed portable agent memory implementation and validation complete.
+- Version metadata and release notes prepared on main; publication pending CI.

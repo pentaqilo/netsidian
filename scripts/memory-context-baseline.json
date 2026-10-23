@@ -1,0 +1,17 @@
+{
+  "revision": "5603319e4fd53df0b67e78d553670126db2f037c",
+  "tokenizer": "tiktoken==0.12.0/cl100k_base",
+  "catalogRegressionByteCeiling": 32768,
+  "tools": {
+    "utf8Bytes": 11064,
+    "tokens": 2337
+  },
+  "instructions": {
+    "utf8Bytes": 446,
+    "tokens": 84
+  },
+  "singleSkill": {
+    "utf8Bytes": 4580,
+    "tokens": 974
+  }
+}

@@ -21,7 +21,7 @@ func mcpToolError(err error) *mcp.CallToolResult {
 		out["code"] = string(de.Code)
 		switch de.Code {
 		case domain.ErrCodePrecondition, domain.ErrCodePreconditionReq:
-			out["guidance"] = "Reread the document, merge with its current content and retry with the fresh revision and a new logical idempotency key."
+			out["guidance"] = "Resolve any partial or completion-unknown operation first. For a confirmed uncommitted revision conflict, read and merge current content; a changed payload needs a new logical key."
 		case domain.ErrCodeForbidden:
 			out["guidance"] = "Check the credential's vault binding and scopes via netsidian_connect; reads never gain writes."
 		case domain.ErrCodeConflict:
@@ -108,29 +108,90 @@ type mcpDocUpdateInput struct {
 }
 
 type mcpMemoryRecallInput struct {
-	Folder   string `json:"folder,omitempty"`
-	Revision string `json:"revision,omitempty" jsonschema:"Required with offset; use indexRevision from first recall page"`
-	Vault    string `json:"vaultId,omitempty"`
-	Query    string `json:"query,omitempty" jsonschema:"Case-insensitive substring over key, scope and text"`
-	Scope    string `json:"scope,omitempty" jsonschema:"Exact scope filter, case-insensitive"`
-	Key      string `json:"key,omitempty" jsonschema:"Exact stable key"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"1 to 50 entries, default 20"`
-	Offset   int    `json:"offset,omitempty"`
-	MaxBytes int    `json:"maxBytes,omitempty" jsonschema:"Response budget, 1024 to 32768, default 8192"`
+	Cursor    string `json:"cursor,omitempty" jsonschema:"Opaque nextCursor; pass it alone with vaultId for generation- and filter-pinned continuation"`
+	Folder    string `json:"folder,omitempty"`
+	Revision  string `json:"revision,omitempty" jsonschema:"Required with offset; use indexRevision from first recall page"`
+	QueryHash string `json:"queryHash,omitempty" jsonschema:"Required with offset; use queryHash from first recall page; the full filter set must match"`
+	Vault     string `json:"vaultId,omitempty"`
+	Query     string `json:"query,omitempty" jsonschema:"Case-insensitive substring over key, scope and text"`
+	Scope     string `json:"scope,omitempty" jsonschema:"Exact scope filter, case-insensitive"`
+	Key       string `json:"key,omitempty" jsonschema:"Exact stable key"`
+	Kind      string `json:"kind,omitempty" jsonschema:"Exact kind filter: fact, preference, decision, episode, procedure or inference"`
+	ScopeID   string `json:"scopeId,omitempty" jsonschema:"Exact scopeId filter of versioned entries"`
+	Status    string `json:"status,omitempty" jsonschema:"active (default when set), superseded, disputed, retracted or all; unset keeps legacy behavior (everything)"`
+	ValidOn   string `json:"validOn,omitempty" jsonschema:"RFC3339 instant; return only entries valid at that time"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"1 to 50 entries, default 20"`
+	Offset    int    `json:"offset,omitempty"`
+	MaxBytes  int    `json:"maxBytes,omitempty" jsonschema:"Response budget, 1024 to 32768, default 8192"`
 }
 
 type mcpMemoryRememberInput struct {
-	Folder           string   `json:"folder,omitempty"`
-	ExpectedRevision string   `json:"expectedRevision,omitempty" jsonschema:"Optional index revision from recall; rejects stale edits"`
-	DetailRevision   string   `json:"detailRevision,omitempty" jsonschema:"Required when replacing existing linked detail content"`
-	Vault            string   `json:"vaultId,omitempty"`
-	Key              string   `json:"key" jsonschema:"Stable entry key matching ^[a-z0-9][a-z0-9._-]{0,95}$; reuse it to update the same topic"`
-	Text             string   `json:"text" jsonschema:"Exact short text, at most 500 characters"`
-	Scope            string   `json:"scope,omitempty" jsonschema:"Optional context label such as user or project, at most 64 characters"`
-	Refs             []string `json:"refs,omitempty" jsonschema:"Existing document paths/IDs, folders, boards or maps to reference, at most 16"`
-	Detail           string   `json:"detail,omitempty" jsonschema:"Long Markdown kept in a linked detail document, never duplicated in the index"`
-	DetailPath       string   `json:"detailPath,omitempty" jsonschema:"Optional .md path inside the memory details folder"`
-	IdempotencyKey   string   `json:"idempotencyKey,omitempty" jsonschema:"Reuse the same key when retrying this logical remember"`
+	Folder           string              `json:"folder,omitempty"`
+	ExpectedRevision string              `json:"expectedRevision,omitempty" jsonschema:"Optional index revision from recall; rejects stale edits"`
+	DetailRevision   string              `json:"detailRevision,omitempty" jsonschema:"Required when replacing existing linked detail content"`
+	Vault            string              `json:"vaultId,omitempty"`
+	Key              string              `json:"key" jsonschema:"Stable entry key matching ^[a-z0-9][a-z0-9._-]{0,95}$; reuse it to update the same topic"`
+	Text             string              `json:"text" jsonschema:"Exact short text, at most 500 characters"`
+	Scope            string              `json:"scope,omitempty" jsonschema:"Optional context label such as user or project, at most 64 characters"`
+	Refs             []string            `json:"refs,omitempty" jsonschema:"Existing document paths/IDs, folders, boards or maps to reference, at most 16"`
+	Detail           string              `json:"detail,omitempty" jsonschema:"Long Markdown kept in a linked detail document, never duplicated in the index"`
+	DetailPath       string              `json:"detailPath,omitempty" jsonschema:"Optional .md path inside the memory details folder"`
+	Kind             string              `json:"kind,omitempty" jsonschema:"fact, preference, decision, episode, procedure or inference"`
+	ScopeID          string              `json:"scopeId,omitempty" jsonschema:"Stable machine-readable scope id, at most 64 characters"`
+	Status           string              `json:"status,omitempty" jsonschema:"active, superseded, disputed or retracted"`
+	EvidenceClass    string              `json:"evidenceClass,omitempty" jsonschema:"user-stated, observed, sourced or inferred"`
+	ValidFrom        string              `json:"validFrom,omitempty" jsonschema:"RFC3339 instant from which the claim holds"`
+	ValidTo          string              `json:"validTo,omitempty" jsonschema:"RFC3339 instant until which the claim holds"`
+	SourceRefs       []memorySourceInput `json:"sourceRefs,omitempty" jsonschema:"Up to 16 pinned evidence references, distinct from latest-resource refs"`
+	Supersedes       []memoryClaimInput  `json:"supersedes,omitempty"`
+	DerivedFrom      []memoryClaimInput  `json:"derivedFrom,omitempty"`
+	ClearFields      []string            `json:"clearFields,omitempty" jsonschema:"Explicitly clear optional metadata; omitted or null fields preserve existing values"`
+	IdempotencyKey   string              `json:"idempotencyKey,omitempty" jsonschema:"Reuse the same key when retrying this logical remember"`
+}
+
+type mcpMemoryReviseInput struct {
+	Folder           string `json:"folder,omitempty"`
+	Vault            string `json:"vaultId,omitempty"`
+	Key              string `json:"key" jsonschema:"Existing entry key to revise"`
+	Action           string `json:"action" jsonschema:"supersede (replace text, pin prior claim), retract, dispute or resolve"`
+	ExpectedRevision string `json:"expectedRevision" jsonschema:"indexRevision from recall; required, stale revisions are rejected"`
+	Text             string `json:"text,omitempty" jsonschema:"Replacement claim, supersede only, at most 500 characters"`
+	Kind             string `json:"kind,omitempty"`
+	EvidenceClass    string `json:"evidenceClass,omitempty"`
+	Reason           string `json:"reason,omitempty" jsonschema:"Optional audit note for the revision, at most 500 characters"`
+	IdempotencyKey   string `json:"idempotencyKey,omitempty" jsonschema:"Reuse the same key when retrying this logical revision"`
+}
+
+type mcpConsolidateSource struct {
+	Key              string `json:"key,omitempty" jsonschema:"Index entry key relied upon"`
+	DocumentID       string `json:"documentId,omitempty" jsonschema:"Document id relied upon"`
+	ExpectedRevision string `json:"expectedRevision,omitempty" jsonschema:"Revision the plan was built against"`
+}
+
+type mcpConsolidateTarget struct {
+	DocumentID          string  `json:"documentId,omitempty" jsonschema:"Existing target document"`
+	Path                string  `json:"path,omitempty" jsonschema:"New target document path"`
+	ExpectedRevision    string  `json:"expectedRevision,omitempty" jsonschema:"Required for existing targets; from a prior recall/read"`
+	Markdown            *string `json:"markdown" jsonschema:"Managed-section body; human content outside the managed block is preserved"`
+	AdoptManagedSection bool    `json:"adoptManagedSection,omitempty" jsonschema:"Explicitly own an existing human-authored document by appending a managed section"`
+}
+
+type mcpConsolidateEntry struct {
+	Key        string   `json:"key"`
+	Status     string   `json:"status,omitempty" jsonschema:"active, superseded, disputed or retracted"`
+	Text       string   `json:"text,omitempty" jsonschema:"Replacement claim, at most 500 characters"`
+	Supersedes []string `json:"supersedes,omitempty" jsonschema:"Keys this entry replaces; they become superseded"`
+}
+
+type mcpMemoryConsolidateInput struct {
+	Folder           string                 `json:"folder,omitempty"`
+	Vault            string                 `json:"vaultId,omitempty"`
+	OperationID      string                 `json:"operationId" jsonschema:"Stable id across retries; identical replays resume, changed plans are rejected"`
+	ExpectedRevision string                 `json:"expectedRevision,omitempty" jsonschema:"Required index revision for entry changes; claim sources may inherit this pin"`
+	DryRun           bool                   `json:"dryRun,omitempty" jsonschema:"Validate the plan and report conflicts without writing"`
+	Sources          []mcpConsolidateSource `json:"sources,omitempty" jsonschema:"Pinned evidence the plan relies on, at most 16"`
+	Targets          []mcpConsolidateTarget `json:"targets,omitempty" jsonschema:"Topical document edits, at most 1"`
+	Entries          []mcpConsolidateEntry  `json:"entries,omitempty" jsonschema:"Index entry status/text changes, at most 32"`
 }
 
 func (s *Server) addMCPWorkflowTools(server *mcp.Server) {
@@ -258,7 +319,7 @@ func (s *Server) addMCPWorkflowTools(server *mcp.Server) {
 		if err != nil {
 			return mcpToolError(err), nil, nil
 		}
-		res, err := s.Svc.RecallMemory(ctx, actor, space, &service.MemoryRecallInput{Folder: in.Folder, Revision: in.Revision, Query: in.Query, Scope: in.Scope, Key: in.Key, Limit: in.Limit, Offset: in.Offset, MaxBytes: in.MaxBytes})
+		res, err := s.Svc.RecallMemory(ctx, actor, space, &service.MemoryRecallInput{Cursor: in.Cursor, Folder: in.Folder, Revision: in.Revision, QueryHash: in.QueryHash, Query: in.Query, Scope: in.Scope, Key: in.Key, Kind: in.Kind, ScopeID: in.ScopeID, Status: in.Status, ValidOn: in.ValidOn, Limit: in.Limit, Offset: in.Offset, MaxBytes: in.MaxBytes})
 		if err != nil {
 			return mcpToolError(err), nil, nil
 		}
@@ -277,13 +338,62 @@ func (s *Server) addMCPWorkflowTools(server *mcp.Server) {
 		if err := checkMCPKeyHeader(in.IdempotencyKey); err != nil {
 			return mcpToolError(err), nil, nil
 		}
+		srcRefs := sourceInputs(in.SourceRefs)
 		receipt, err := s.Svc.RememberMemory(ctx, actor, space, &service.MemoryRememberInput{
 			Folder: in.Folder, ExpectedRevision: in.ExpectedRevision, DetailRevision: in.DetailRevision, Key: in.Key, Text: in.Text, Scope: in.Scope, Refs: in.Refs, Detail: in.Detail, DetailPath: in.DetailPath,
+			Kind: in.Kind, ScopeID: in.ScopeID, Status: in.Status, EvidenceClass: in.EvidenceClass, ValidFrom: in.ValidFrom, ValidTo: in.ValidTo, SourceRefs: srcRefs, Supersedes: claimInputs(in.Supersedes), DerivedFrom: claimInputs(in.DerivedFrom), ClearFields: in.ClearFields,
 		}, in.IdempotencyKey)
 		if err != nil {
 			return mcpToolError(err), nil, nil
 		}
 		return mcpText(receipt, false), nil, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{Name: "netsidian_memory_revise", Description: "Guarded correction/retraction of one indexed entry: supersede, retract, dispute or resolve. expectedRevision required; supersede pins the prior claim, history is never purged.", Annotations: guarded}, func(ctx context.Context, r *mcp.CallToolRequest, in mcpMemoryReviseInput) (*mcp.CallToolResult, *service.MemoryRevisionReceipt, error) {
+		actor, err := s.mcpActor(ctx)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		space, err := s.mcpVault(ctx, actor, in.Vault)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		if err := checkMCPKeyHeader(in.IdempotencyKey); err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		receipt, err := s.Svc.ReviseMemory(ctx, actor, space, &service.MemoryReviseInput{
+			Folder: in.Folder, Key: in.Key, Action: in.Action, ExpectedRevision: in.ExpectedRevision, Text: in.Text, Kind: in.Kind, EvidenceClass: in.EvidenceClass, Reason: in.Reason,
+		}, in.IdempotencyKey)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		return mcpText(receipt, false), receipt, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{Name: "netsidian_memory_consolidate", Description: "Apply a bounded consolidation plan (targets + index entry changes) with a durable resumable journal. Partial failures return honest receipts; replay the same operationId to resume; never rolls back user edits.", Annotations: guarded}, func(ctx context.Context, r *mcp.CallToolRequest, in mcpMemoryConsolidateInput) (*mcp.CallToolResult, *service.MemoryConsolidationReceipt, error) {
+		actor, err := s.mcpActor(ctx)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		space, err := s.mcpVault(ctx, actor, in.Vault)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		plan := &service.MemoryConsolidateInput{Folder: in.Folder, OperationID: in.OperationID, ExpectedRevision: in.ExpectedRevision, DryRun: in.DryRun}
+		for _, src := range in.Sources {
+			plan.Sources = append(plan.Sources, service.MemoryConsolidateSource{Key: src.Key, DocumentID: src.DocumentID, ExpectedRevision: src.ExpectedRevision})
+		}
+		for _, t := range in.Targets {
+			plan.Targets = append(plan.Targets, service.MemoryConsolidateTarget{DocumentID: t.DocumentID, Path: t.Path, ExpectedRevision: t.ExpectedRevision, Markdown: t.Markdown, AdoptManagedSection: t.AdoptManagedSection})
+		}
+		for _, e := range in.Entries {
+			plan.Entries = append(plan.Entries, service.MemoryConsolidateEntry{Key: e.Key, Status: e.Status, Text: e.Text, Supersedes: e.Supersedes})
+		}
+		receipt, err := s.Svc.ConsolidateMemory(ctx, actor, space, plan)
+		if err != nil {
+			return mcpToolError(err), nil, nil
+		}
+		return mcpText(receipt, false), receipt, nil
 	})
 }
 

@@ -1,0 +1,2 @@
+# Development-only instruction budget measurement; never imported by the server.
+tiktoken==0.12.0

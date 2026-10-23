@@ -630,6 +630,228 @@ paths:
       parameters: [{$ref: "#/components/parameters/SpacePath"}]
       requestBody: {content: {application/json: {schema: {$ref: "#/components/schemas/AgentContextRequest"}}}}
       responses: {"200": {description: AgentContextResponse, content: {application/json: {schema: {$ref: "#/components/schemas/AgentContextResponse"}}}}, "4xx": {$ref: "#/components/responses/Error"}}
+  /api/v1/spaces/{space}/agent/memory/recall:
+    post:
+      tags:
+      - agent
+      summary: Bounded recall over ordinary Markdown memory
+      parameters:
+      - &id001
+        $ref: '#/components/parameters/SpacePath'
+      responses:
+        '200':
+          description: MemoryRecallResult
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryRecallResult'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRecallInput'
+  /api/v1/spaces/{space}/agent/memory/remember:
+    post:
+      tags:
+      - agent
+      summary: Bounded remember over ordinary Markdown memory
+      parameters:
+      - *id001
+      - name: Idempotency-Key
+        in: header
+        schema:
+          type: string
+          maxLength: 1024
+        description: One identical logical payload, including retries
+      responses:
+        '200':
+          description: MemoryReceipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryReceipt'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryRememberInput'
+  /api/v1/spaces/{space}/agent/memory/revise:
+    post:
+      tags:
+      - agent
+      summary: Bounded revise over ordinary Markdown memory
+      parameters:
+      - *id001
+      - name: Idempotency-Key
+        in: header
+        schema:
+          type: string
+          maxLength: 1024
+        description: One identical logical payload, including retries
+      responses:
+        '200':
+          description: MemoryRevisionReceipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryRevisionReceipt'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryReviseInput'
+  /api/v1/spaces/{space}/agent/memory/consolidate:
+    post:
+      tags:
+      - agent
+      summary: Bounded consolidate over ordinary Markdown memory
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: MemoryConsolidationReceipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryConsolidationReceipt'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryConsolidateInput'
+  /api/v1/agent/memory-policy:
+    get:
+      security: []
+      tags:
+      - agent
+      summary: Static versioned portable policy; no private vault data
+      parameters:
+      - name: part
+        in: query
+        schema:
+          type: string
+          enum:
+          - core
+          - netsidian
+          - local
+          - remote
+          - schema
+          - examples
+          - recovery
+          - local-helper
+      - name: maxBytes
+        in: query
+        schema: &id002
+          anyOf:
+          - const: 0
+          - type: integer
+            minimum: 1024
+            maximum: 32768
+          default: 8192
+      responses:
+        '200':
+          description: MemoryPolicyResult
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryPolicyResult'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /api/v1/spaces/{space}/agent/memory/operation:
+    get:
+      tags:
+      - agent
+      summary: Read-only principal-bound recovery lookup; never applies pending steps
+      parameters:
+      - *id001
+      - name: operationId
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+        required: true
+      - name: includePlan
+        in: query
+        schema:
+          type: boolean
+      - name: maxBytes
+        in: query
+        schema:
+          type: integer
+          minimum: 1024
+          maximum: 131072
+          default: 8192
+      responses:
+        '200':
+          description: MemoryOperationStatus
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryOperationStatus'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+  /api/v1/spaces/{space}/agent/memory/derived:
+    get:
+      tags:
+      - agent
+      summary: Bounded indexed dependency status; source changes require review, never automatic regeneration
+      parameters:
+      - *id001
+      - name: documentId
+        in: query
+        schema:
+          type: string
+          maxLength: 128
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 1024
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: maxBytes
+        in: query
+        schema: *id002
+      responses:
+        '200':
+          description: MemoryDerivedPage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryDerivedPage'
+        4xx:
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
   /api/v1/spaces/{space}/changes/since:
     get:
       tags: [agent]
@@ -668,6 +890,799 @@ components:
           examples:
             forbidden: {value: {error: {code: forbidden, message: "key lacks scope documents:write", retryable: false}}}
   schemas:
+    MemorySourceInput:
+      type: object
+      additionalProperties: false
+      properties:
+        target: &id001
+          type: string
+          maxLength: 1024
+          minLength: 1
+        kind: &id002
+          type: string
+          enum:
+          - document
+          - external
+          - interaction
+        revision: &id003
+          type: string
+          maxLength: 128
+          description: Pinned revision; omitted document evidence pins current revision
+        locator: &id004
+          type: string
+          maxLength: 1024
+        quote: &id005
+          type: string
+          maxLength: 500
+        observedAt: &id006
+          type: string
+          maxLength: 128
+          format: date-time
+      required:
+      - target
+    MemorySourceRef:
+      type: object
+      additionalProperties: true
+      properties:
+        target: *id001
+        kind: *id002
+        revision: *id003
+        locator: *id004
+        quote: *id005
+        observedAt: *id006
+        documentId:
+          type: string
+          maxLength: 128
+          readOnly: true
+        path:
+          type: string
+          readOnly: true
+        verified:
+          type: boolean
+          readOnly: true
+        available:
+          type: boolean
+          readOnly: true
+        stale:
+          type: boolean
+          readOnly: true
+      required:
+      - target
+    MemoryClaimInput:
+      type: object
+      additionalProperties: false
+      properties:
+        vaultId: &id007
+          type: string
+          maxLength: 128
+        indexDocumentId: &id008
+          type: string
+          maxLength: 128
+        key: &id009
+          type: string
+          maxLength: 96
+          pattern: ^[a-z0-9][a-z0-9._-]{0,95}$
+        indexRevision: &id010
+          type: string
+          maxLength: 128
+      required:
+      - key
+    MemoryClaimRef:
+      type: object
+      additionalProperties: true
+      properties:
+        vaultId: *id007
+        indexDocumentId: *id008
+        key: *id009
+        indexRevision: *id010
+        fingerprint:
+          type: string
+          readOnly: true
+        expectedStatus:
+          type: string
+          readOnly: true
+      required:
+      - vaultId
+      - indexDocumentId
+      - key
+      - indexRevision
+    MemoryRef:
+      type: object
+      additionalProperties: true
+      properties:
+        target:
+          type: string
+        kind:
+          type: string
+        documentId:
+          type: string
+        path:
+          type: string
+        revision:
+          type: string
+        available:
+          type: boolean
+        derivedStatus:
+          type: string
+      required:
+      - target
+      - kind
+      - available
+    MemoryRememberInput:
+      type: object
+      additionalProperties: false
+      properties:
+        folder:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+        expectedRevision:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+        key: *id009
+        text:
+          type: string
+          maxLength: 500
+          minLength: 1
+        scope:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+        refs:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              maxLength: 1024
+            maxItems: 16
+          - type: 'null'
+        detail:
+          anyOf:
+          - type: string
+            maxLength: 20000
+          - type: 'null'
+        detailPath:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+        detailRevision:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+        kind:
+          anyOf:
+          - &id011
+            type: string
+            enum:
+            - fact
+            - preference
+            - decision
+            - episode
+            - procedure
+            - inference
+          - type: 'null'
+        scopeId:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+        status:
+          anyOf:
+          - &id013
+            type: string
+            enum:
+            - active
+            - superseded
+            - disputed
+            - retracted
+          - type: 'null'
+        evidenceClass:
+          anyOf:
+          - &id012
+            type: string
+            enum:
+            - user-stated
+            - observed
+            - sourced
+            - inferred
+          - type: 'null'
+        validFrom:
+          anyOf:
+          - type: string
+            maxLength: 128
+            format: date-time
+          - type: 'null'
+        validTo:
+          anyOf:
+          - type: string
+            maxLength: 128
+            format: date-time
+          - type: 'null'
+        sourceRefs:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/MemorySourceInput'
+            maxItems: 16
+          - type: 'null'
+        supersedes:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/MemoryClaimInput'
+            maxItems: 16
+          - type: 'null'
+        derivedFrom:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/MemoryClaimInput'
+            maxItems: 16
+          - type: 'null'
+        clearFields:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              enum:
+              - kind
+              - scope
+              - scopeId
+              - evidenceClass
+              - validFrom
+              - validTo
+              - sourceRefs
+              - derivedFrom
+            maxItems: 8
+          - type: 'null'
+      required:
+      - key
+      - text
+      description: Omitted/null optional fields preserve values. Explicit empty lists clear refs/sourceRefs/derivedFrom;
+        clearFields clears supported metadata. Unknown inputs fail.
+    MemoryReceipt:
+      type: object
+      additionalProperties: true
+      properties:
+        key: *id009
+        status:
+          type: string
+          enum:
+          - created
+          - updated
+          - unchanged
+        indexPath:
+          type: string
+        indexRevision:
+          type: string
+        detailPath:
+          type: string
+        detailRevision:
+          type: string
+        verified:
+          type: boolean
+      required:
+      - key
+      - status
+      - indexPath
+      - indexRevision
+      - verified
+    MemoryRecallInput:
+      type: object
+      additionalProperties: false
+      properties:
+        folder:
+          type: string
+          maxLength: 1024
+        query:
+          type: string
+          maxLength: 500
+        scope:
+          type: string
+          maxLength: 64
+        key:
+          type: string
+          maxLength: 96
+        kind: *id011
+        scopeId:
+          type: string
+          maxLength: 64
+        status:
+          type: string
+          enum:
+          - active
+          - superseded
+          - disputed
+          - retracted
+          - all
+        validOn:
+          type: string
+          maxLength: 128
+          format: date-time
+        revision:
+          type: string
+          maxLength: 128
+        queryHash:
+          type: string
+          maxLength: 64
+        cursor:
+          type: string
+          maxLength: 8192
+        offset:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 0
+          maximum: 50
+          default: 20
+        maxBytes:
+          anyOf:
+          - const: 0
+          - type: integer
+            minimum: 1024
+            maximum: 32768
+          default: 8192
+      description: Pass returned cursor alone for continuation. Legacy offset needs revision; typed filters also need
+        queryHash. Cursor pins complete request and vault generation.
+    MemoryEntry:
+      type: object
+      additionalProperties: true
+      properties:
+        key: *id009
+        text:
+          type: string
+        scope:
+          type: string
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryRef'
+        detail:
+          $ref: '#/components/schemas/MemoryRef'
+        schemaVersion:
+          type: integer
+        kind:
+          type: string
+        scopeId:
+          type: string
+        status:
+          type: string
+        evidenceClass:
+          type: string
+        recordedAt:
+          type: string
+        updatedAt:
+          type: string
+        validFrom:
+          type: string
+        validTo:
+          type: string
+        derivedState:
+          type: string
+        sourceRefs:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemorySourceRef'
+        supersedes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryClaimRef'
+        derivedFrom:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryClaimRef'
+      required:
+      - key
+      - text
+    MemoryRecallResult:
+      type: object
+      additionalProperties: true
+      properties:
+        indexPath:
+          type: string
+        indexRevision:
+          type: string
+        queryHash:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryEntry'
+        matched:
+          type: integer
+        offset:
+          type: integer
+        hasMore:
+          type: boolean
+        nextOffset:
+          type: integer
+        nextCursor:
+          type: string
+        truncated:
+          type: boolean
+        note:
+          type: string
+        diagnostics:
+          type: array
+          items:
+            type: string
+          maxItems: 16
+      required:
+      - indexPath
+      - entries
+      - matched
+      - offset
+      - hasMore
+    MemoryReviseInput:
+      type: object
+      additionalProperties: false
+      properties:
+        folder:
+          type: string
+          maxLength: 1024
+        key: *id009
+        action:
+          type: string
+          enum:
+          - supersede
+          - retract
+          - dispute
+          - resolve
+        expectedRevision:
+          type: string
+          maxLength: 128
+          minLength: 1
+        text:
+          type: string
+          maxLength: 500
+        kind: *id011
+        evidenceClass: *id012
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - key
+      - action
+      - expectedRevision
+    MemoryRevisionReceipt:
+      type: object
+      additionalProperties: true
+      properties:
+        key: *id009
+        action:
+          type: string
+        status:
+          type: string
+        indexPath:
+          type: string
+        indexRevision:
+          type: string
+        supersededRevision:
+          type: string
+        supersedes:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryClaimRef'
+        verified:
+          type: boolean
+      required:
+      - key
+      - action
+      - status
+      - indexPath
+      - indexRevision
+      - verified
+    MemoryConsolidateSource:
+      type: object
+      additionalProperties: false
+      properties:
+        key: *id009
+        documentId:
+          type: string
+          maxLength: 128
+        expectedRevision:
+          type: string
+          maxLength: 128
+      oneOf:
+      - required:
+        - key
+        not:
+          required:
+          - documentId
+      - required:
+        - documentId
+        - expectedRevision
+        not:
+          required:
+          - key
+    MemoryConsolidateTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        documentId:
+          type: string
+          maxLength: 128
+        path:
+          type: string
+          maxLength: 1024
+        expectedRevision:
+          type: string
+          maxLength: 128
+        markdown:
+          type: string
+          maxLength: 20000
+        adoptManagedSection:
+          type: boolean
+      required:
+      - markdown
+      oneOf:
+      - required:
+        - documentId
+        - expectedRevision
+        not:
+          required:
+          - path
+      - required:
+        - path
+        not:
+          required:
+          - documentId
+      description: Existing targets need expectedRevision. Existing unowned content needs explicit adoption; only the
+        delimited managed section is replaced. Human content remains.
+    MemoryConsolidateEntry:
+      type: object
+      additionalProperties: false
+      properties:
+        key: *id009
+        status: *id013
+        text:
+          type: string
+          maxLength: 500
+        supersedes:
+          type: array
+          items: *id009
+          maxItems: 16
+      required:
+      - key
+    MemoryConsolidateInput:
+      type: object
+      additionalProperties: false
+      properties:
+        folder:
+          type: string
+          maxLength: 1024
+        operationId:
+          type: string
+          maxLength: 256
+          minLength: 1
+        expectedRevision:
+          type: string
+          maxLength: 128
+        dryRun:
+          type: boolean
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConsolidateSource'
+          maxItems: 16
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConsolidateTarget'
+          maxItems: 1
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConsolidateEntry'
+          maxItems: 32
+      required:
+      - operationId
+      description: Canonical plan JSON max 96 KiB. Target requires pinned sources. Entries require expectedRevision.
+        Source keys require their index pin (source expectedRevision or plan expectedRevision). Dry-run performs no
+        writes. Retry same identity and identical plan; dryRun is not part of logical payload identity.
+    MemoryConsolidationStep:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+          - target
+          - index
+        documentId:
+          type: string
+        path:
+          type: string
+        status:
+          type: string
+          enum:
+          - planned
+          - applied
+          - blocked
+          - failed
+        revision:
+          type: string
+        error:
+          type: string
+      required:
+      - id
+      - kind
+      - status
+    MemoryConsolidationReceipt:
+      type: object
+      additionalProperties: true
+      properties:
+        operationId:
+          type: string
+        outcome:
+          type: string
+          enum:
+          - dry-run
+          - conflicts
+          - applied
+          - partial
+          - unchanged
+        indexPath:
+          type: string
+        indexRevision:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConsolidationStep'
+        warnings:
+          type: array
+          items:
+            type: string
+        recoveryNote:
+          type: string
+        recoveryRef:
+          type: string
+        code:
+          type: string
+        verified:
+          type: boolean
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemorySourceRef'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryClaimRef'
+      required:
+      - operationId
+      - outcome
+      - indexPath
+      - steps
+      - verified
+    MemoryOperationStatus:
+      type: object
+      additionalProperties: true
+      properties:
+        operationId:
+          type: string
+        phase:
+          type: string
+        recoveryRef:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryConsolidationStep'
+        receipt:
+          $ref: '#/components/schemas/MemoryConsolidationReceipt'
+        plan:
+          $ref: '#/components/schemas/MemoryConsolidateInput'
+      required:
+      - operationId
+      - phase
+      - recoveryRef
+      - steps
+    MemoryDerivedSourceStatus:
+      type: object
+      additionalProperties: true
+      properties:
+        documentId:
+          type: string
+        path:
+          type: string
+        pinnedRevision:
+          type: string
+        currentRevision:
+          type: string
+        available:
+          type: boolean
+        stale:
+          type: boolean
+      required:
+      - documentId
+      - pinnedRevision
+      - available
+      - stale
+    MemoryDerivedDocumentStatus:
+      type: object
+      additionalProperties: true
+      properties:
+        documentId:
+          type: string
+        path:
+          type: string
+        revision:
+          type: string
+        status:
+          type: string
+          enum:
+          - current
+          - stale
+          - broken
+          - cyclic
+          - provisional
+          - unindexed
+          - invalid
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryDerivedSourceStatus'
+        cycle:
+          type: array
+          items:
+            type: string
+      required:
+      - documentId
+      - path
+      - revision
+      - status
+      - sources
+    MemoryDerivedPage:
+      type: object
+      additionalProperties: true
+      properties:
+        scanned:
+          type: integer
+        derived:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryDerivedDocumentStatus'
+        truncated:
+          type: boolean
+        nextCursor:
+          type: string
+        generation:
+          type: integer
+      required:
+      - scanned
+      - derived
+      - generation
+    MemoryPolicyResult:
+      type: object
+      additionalProperties: true
+      properties:
+        policyVersion:
+          type: string
+        part:
+          type: string
+        text:
+          type: string
+        parts:
+          type: array
+          items:
+            type: string
+      required:
+      - policyVersion
+      - part
+      - text
+      - parts
+
     InstanceSettings:
       type: object
       required: [authMode, needsSetup, signupEnabled, version, features, runtime]

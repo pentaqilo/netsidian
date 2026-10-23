@@ -295,7 +295,7 @@ func desktopMCPOperation(op mcpOperation, cfg *DesktopMCPConfig) bool {
 	if cfg.ReadOnly && !mcpReadOperation(op) {
 		return false
 	}
-	if (op.Method == "GET" || op.Method == "HEAD") && (op.Path == "/api/v1/spaces" || op.Path == "/api/v1/agent/whoami") {
+	if (op.Method == "GET" || op.Method == "HEAD") && (op.Path == "/api/v1/spaces" || op.Path == "/api/v1/agent/whoami" || op.Path == "/api/v1/agent/memory-policy") {
 		return true
 	}
 	if !strings.Contains(op.Path, "{space}") {

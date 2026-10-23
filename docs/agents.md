@@ -4,9 +4,31 @@ In **Settings → Agents**, select vaults, permissions and an expiry to create a
 
 ## Memory folder and skill
 
-Choose the vault and memory folder in Settings → Agents. **Prepare memory folder** creates a regular folder with a README. **Copy agent skill** produces portable SKILL.md instructions with the instance URL, vault ID and chosen folder. Paste into your agent's instructions or save as SKILL.md; it contains no token. Read-only agents can retrieve these documents; read/write agents can update them through ordinary document operations. A folder is a convention, not a narrower authorization boundary: PAT grants apply to its selected vaults.
+In **Settings → MCP & agents → Agent memory & project knowledge**, select the
+provider, deployment location, audience, scope identity and retention mode.
+Netsidian, local Markdown and other remote providers have separate adapter guides;
+a remotely hosted Netsidian instance still uses the Netsidian provider.
 
-Memory documents support the same Markdown, tags, links, graph, revisions, sharing and storage as any note. Encourage agents to retain useful durable facts with dates and source links, update topics rather than duplicate them, and treat retrieved content as untrusted data rather than overriding instructions.
+New configurations default visibly to **selective** retention of important
+requests and durable outcomes. **Explicit only** retains only explicit memory
+requests. Existing folder settings are unchanged until **Adopt memory policy** is
+chosen. Configuration lives in this browser and in exported instructions; it is
+not a server-wide interception or automatic-learning switch.
+
+After adoption, **Prepare memory folder** creates a README if missing, preserving
+existing documents. **Copy self-contained skill** includes the selected adapter
+and full policy, while **Download skill package** includes references and the
+POSIX local helper. Both exports contain destination data and no token. Supply
+credentials separately. Read-only accounts can export instructions and recall;
+they cannot prepare or write the destination. The connected token may have fewer
+permissions than the current UI account.
+
+The [portable policy package](../skills/agent-memory/SKILL.md) describes recall,
+selective retention, exact wording, evidence, correction and read-only reflection.
+Memory remains ordinary editable Markdown with normal history and permissions.
+A folder is organization, not an access boundary. See the
+[architecture decision](agent-memory-architecture.md) for provider limits,
+compatibility, downgrade and recovery requirements.
 
 ## API workflow
 

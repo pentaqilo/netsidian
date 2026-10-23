@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/pentaqilo/netsidian/internal/domain"
 	"github.com/pentaqilo/netsidian/internal/markdown"
+	"github.com/pentaqilo/netsidian/internal/memorypolicy"
 )
 
 // Compact indexed agent memory: a short index document in the ordinary
@@ -22,39 +24,231 @@ import (
 // in the index. The index is a regular Markdown note with normal vault
 // permissions, revisions and history; these helpers only parse and merge
 // it, every mutation still goes through CreateNote/SaveContent guards.
+//
+// Entry representation v2 adds typed metadata (kind, scopeId, status,
+// validity interval, evidence class, pinned sourceRefs, supersedes and
+// derivedFrom claim refs). It is strictly additive: unversioned lines are
+// legacy entries whose provenance is unknown, not verified. Unknown
+// stored fields are preserved byte-for-byte as raw JSON whenever an
+// entry is touched, and entries from a future schema version are read
+// but never mutated, so an older binary cannot silently drop metadata
+// it does not understand.
 
 const MemoryIndexPath = "agent-memory/index.md"
+
+// MemorySchemaVersion is the entry representation this server writes.
+const MemorySchemaVersion = 2
+
+// MemoryPolicyVersion is the shared versioned retention/recall policy
+// identity. Generated skills, MCP guidance, UI and docs must reference
+// this exact value; the policy text itself has one canonical home and
+// is projected from it (root-owned generated guidance reads this hook).
+const MemoryPolicyVersion = memorypolicy.Version
 
 const memoryIndexHeader = "---\ntags: [agent-memory]\n---\n\n# Agent memory index\n\n" +
 	"Entries are JSON bullets beginning with `- memory: `. Keep keys stable; other text is preserved.\n"
 
 var memoryKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,95}$`)
 
+var (
+	memoryKinds           = map[string]bool{"fact": true, "preference": true, "decision": true, "episode": true, "procedure": true, "inference": true}
+	memoryStatuses        = map[string]bool{"active": true, "superseded": true, "disputed": true, "retracted": true}
+	memoryEvidenceClasses = map[string]bool{"user-stated": true, "observed": true, "sourced": true, "inferred": true}
+	memorySourceKinds     = map[string]bool{"document": true, "external": true, "interaction": true}
+)
+
 func MemoryDetailPath(key string) string { return "agent-memory/details/" + key + ".md" }
 
-// MemoryRef is a resolved reference to an existing vault resource.
+// MemoryRef is a resolved reference to a live vault resource.
 type MemoryRef struct {
+	Target        string `json:"target"`
+	Kind          string `json:"kind"` // document|folder|board|map
+	DocumentID    string `json:"documentId,omitempty"`
+	Path          string `json:"path,omitempty"`
+	Revision      string `json:"revision,omitempty"`
+	Available     bool   `json:"available"`
+	DerivedStatus string `json:"derivedStatus,omitempty"`
+}
+
+// MemorySourceRef is a bounded structured evidence reference. In-vault
+// document evidence is pinned to a revision and its availability is
+// server-verified at record time; external or interaction evidence is
+// agent-supplied, never fetched and never marked verified.
+type MemorySourceRef struct {
 	Target     string `json:"target"`
-	Kind       string `json:"kind"` // document|folder|board|map
+	Kind       string `json:"kind,omitempty"` // document|external|interaction
 	DocumentID string `json:"documentId,omitempty"`
 	Path       string `json:"path,omitempty"`
-	Revision   string `json:"revision,omitempty"`
-	Available  bool   `json:"available"`
+	Revision   string `json:"revision,omitempty"` // pinned; does not follow forward
+	Locator    string `json:"locator,omitempty"`
+	Quote      string `json:"quote,omitempty"`
+	ObservedAt string `json:"observedAt,omitempty"`
+	Verified   bool   `json:"verified,omitempty"`
+	Available  *bool  `json:"available,omitempty"` // recall-time resolution
+	Stale      bool   `json:"stale,omitempty"`     // pinned revision no longer current
+}
+
+// MemoryClaimRef identifies a durable claim at a specific index
+// revision: destination vault + index document + key + index revision.
+// A bare key is never a global identity; the full tuple survives other
+// folders or vaults using the same key.
+type MemoryClaimRef struct {
+	VaultID         string `json:"vaultId,omitempty"`
+	IndexDocumentID string `json:"indexDocumentId,omitempty"`
+	Key             string `json:"key"`
+	IndexRevision   string `json:"indexRevision"`
+	Fingerprint     string `json:"fingerprint,omitempty"`
+	ExpectedStatus  string `json:"expectedStatus,omitempty"`
 }
 
 // MemoryEntry is one decoded index line.
 type MemoryEntry struct {
-	Key    string      `json:"key"`
-	Scope  string      `json:"scope,omitempty"`
-	Text   string      `json:"text"`
-	Refs   []MemoryRef `json:"refs,omitempty"`
-	Detail *MemoryRef  `json:"detail,omitempty"`
+	Key           string            `json:"key"`
+	Scope         string            `json:"scope,omitempty"`
+	Text          string            `json:"text"`
+	Refs          []MemoryRef       `json:"refs,omitempty"`
+	Detail        *MemoryRef        `json:"detail,omitempty"`
+	SchemaVersion int               `json:"schemaVersion,omitempty"`
+	Kind          string            `json:"kind,omitempty"`
+	ScopeID       string            `json:"scopeId,omitempty"`
+	Status        string            `json:"status,omitempty"`
+	EvidenceClass string            `json:"evidenceClass,omitempty"`
+	RecordedAt    string            `json:"recordedAt,omitempty"`
+	UpdatedAt     string            `json:"updatedAt,omitempty"`
+	ValidFrom     string            `json:"validFrom,omitempty"`
+	ValidTo       string            `json:"validTo,omitempty"`
+	SourceRefs    []MemorySourceRef `json:"sourceRefs,omitempty"`
+	Supersedes    []MemoryClaimRef  `json:"supersedes,omitempty"`
+	DerivedFrom   []MemoryClaimRef  `json:"derivedFrom,omitempty"`
+	DerivedState  string            `json:"derivedState,omitempty"`
 }
 
 type memoryLine struct {
-	key, scope, text string
-	refs             []string
-	detail           string
+	key, scope, text  string
+	refs              []string
+	detail            string
+	schemaVersion     int
+	kind, scopeID     string
+	status            string
+	evidenceClass     string
+	recordedAt        string
+	updatedAt         string
+	validFrom         string
+	validTo           string
+	reason            string
+	sourceRefs        []MemorySourceRef
+	supersedes        []MemoryClaimRef
+	derivedFrom       []MemoryClaimRef
+	originalRaw       map[string]json.RawMessage
+	originalCanonical map[string]json.RawMessage
+	extra             map[string]json.RawMessage // unknown stored fields, kept losslessly
+}
+
+// memoryKnownFields lists every field the parser understands; anything
+// else in a stored entry line is preserved verbatim in extra.
+var memoryKnownFields = map[string]bool{
+	"key": true, "scope": true, "text": true, "refs": true, "detail": true,
+	"schemaVersion": true, "kind": true, "scopeId": true, "status": true,
+	"evidenceClass": true, "recordedAt": true, "updatedAt": true,
+	"validFrom": true, "validTo": true, "sourceRefs": true,
+	"supersedes": true, "derivedFrom": true, "reason": true,
+}
+
+// parseMemoryLine decodes one entry line. Malformed or invalid entry
+// lines are reported as not-an-entry so writers keep the original bytes
+// as ordinary text; a future schemaVersion still decodes understood
+// fields for reading, but mutation is refused separately.
+func parseMemoryLine(line string) (*memoryLine, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "- memory: ") {
+		return nil, false
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(strings.TrimPrefix(trimmed, "- memory: ")), &fields) != nil {
+		return nil, false
+	}
+	l := &memoryLine{}
+	str := func(name string) (string, bool) {
+		raw, ok := fields[name]
+		if !ok || string(raw) == "null" {
+			return "", true
+		}
+		var v string
+		if json.Unmarshal(raw, &v) != nil {
+			return "", false
+		}
+		return v, true
+	}
+	var ok bool
+	if l.key, ok = str("key"); !ok {
+		return nil, false
+	}
+	if l.text, ok = str("text"); !ok {
+		return nil, false
+	}
+	if l.scope, ok = str("scope"); !ok {
+		return nil, false
+	}
+	if l.detail, ok = str("detail"); !ok {
+		return nil, false
+	}
+	if raw, has := fields["refs"]; has {
+		var refs []string
+		if string(raw) != "null" && json.Unmarshal(raw, &refs) != nil {
+			return nil, false
+		}
+		for i, r := range refs {
+			refs[i] = strings.TrimSuffix(strings.TrimPrefix(r, "[["), "]]")
+		}
+		l.refs = refs
+	}
+	l.detail = strings.TrimSuffix(strings.TrimPrefix(l.detail, "[["), "]]")
+	if raw, has := fields["schemaVersion"]; has {
+		var v int
+		if json.Unmarshal(raw, &v) != nil || v < 0 {
+			return nil, false
+		}
+		l.schemaVersion = v
+	}
+	for name, dst := range map[string]*string{
+		"kind": &l.kind, "scopeId": &l.scopeID, "status": &l.status,
+		"evidenceClass": &l.evidenceClass, "recordedAt": &l.recordedAt,
+		"updatedAt": &l.updatedAt, "validFrom": &l.validFrom, "validTo": &l.validTo,
+		"reason": &l.reason,
+	} {
+		v, ok := str(name)
+		if !ok {
+			return nil, false
+		}
+		*dst = v
+	}
+	if raw, has := fields["sourceRefs"]; has && string(raw) != "null" {
+		if json.Unmarshal(raw, &l.sourceRefs) != nil {
+			return nil, false
+		}
+	}
+	for name, dst := range map[string]*[]MemoryClaimRef{"supersedes": &l.supersedes, "derivedFrom": &l.derivedFrom} {
+		if raw, has := fields[name]; has && string(raw) != "null" {
+			if json.Unmarshal(raw, dst) != nil {
+				return nil, false
+			}
+		}
+	}
+	for name, raw := range fields {
+		if !memoryKnownFields[name] {
+			if l.extra == nil {
+				l.extra = map[string]json.RawMessage{}
+			}
+			l.extra[name] = raw
+		}
+	}
+	if !memoryKeyRe.MatchString(l.key) || l.text == "" {
+		return nil, false
+	}
+	canonical := strings.TrimPrefix(l.render(), "- memory: ")
+	_ = json.Unmarshal([]byte(canonical), &l.originalCanonical)
+	l.originalRaw = fields
+	return l, true
 }
 
 // parseMemoryIndex extracts entry lines; every other line is data that
@@ -63,45 +257,94 @@ type memoryLine struct {
 func parseMemoryIndex(markdown string) []*memoryLine {
 	var out []*memoryLine
 	for _, line := range strings.Split(markdown, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- memory: ") {
-			var item struct {
-				Key    string   `json:"key"`
-				Scope  string   `json:"scope,omitempty"`
-				Text   string   `json:"text"`
-				Refs   []string `json:"refs,omitempty"`
-				Detail string   `json:"detail,omitempty"`
-			}
-			if json.Unmarshal([]byte(strings.TrimPrefix(trimmed, "- memory: ")), &item) == nil && memoryKeyRe.MatchString(item.Key) && item.Text != "" {
-				for i, r := range item.Refs {
-					item.Refs[i] = strings.TrimSuffix(strings.TrimPrefix(r, "[["), "]]")
-				}
-				item.Detail = strings.TrimSuffix(strings.TrimPrefix(item.Detail, "[["), "]]")
-				out = append(out, &memoryLine{key: item.Key, scope: item.Scope, text: item.Text, refs: item.Refs, detail: item.Detail})
-			}
-			continue
+		if l, ok := parseMemoryLine(line); ok {
+			out = append(out, l)
 		}
 	}
 	return out
 }
 
+func (l *memoryLine) hasV2() bool {
+	return l.schemaVersion > 0 || l.kind != "" || l.scopeID != "" || l.status != "" ||
+		l.evidenceClass != "" || l.recordedAt != "" || l.updatedAt != "" ||
+		l.validFrom != "" || l.validTo != "" || len(l.sourceRefs) > 0 ||
+		len(l.supersedes) > 0 || len(l.derivedFrom) > 0 || len(l.extra) > 0
+}
+
+// render serializes known fields in a stable order and re-emits every
+// unknown stored field from its raw bytes, so an update of understood
+// fields never drops metadata this binary does not understand.
 func (l *memoryLine) render() string {
-	item := struct {
-		Key    string   `json:"key"`
-		Scope  string   `json:"scope,omitempty"`
-		Text   string   `json:"text"`
-		Refs   []string `json:"refs,omitempty"`
-		Detail string   `json:"detail,omitempty"`
-	}{l.key, l.scope, l.text, l.refs, l.detail}
-	item.Refs = append([]string(nil), item.Refs...)
-	for i, r := range item.Refs {
-		item.Refs[i] = "[[" + r + "]]"
+	pairs := make([]string, 0, 16)
+	add := func(k string, v any) {
+		kb, _ := json.Marshal(k)
+		vb, err := json.Marshal(v)
+		if err != nil {
+			return
+		}
+		if old, ok := l.originalCanonical[k]; ok {
+			if raw, ok := l.originalRaw[k]; ok {
+				vb = preserveStoredJSON(raw, old, vb)
+			}
+		}
+		pairs = append(pairs, string(kb)+":"+string(vb))
 	}
-	if item.Detail != "" {
-		item.Detail = "[[" + item.Detail + "]]"
+	add("key", l.key)
+	if l.scope != "" {
+		add("scope", l.scope)
 	}
-	data, _ := json.Marshal(item)
-	return "- memory: " + string(data)
+	add("text", l.text)
+	if len(l.refs) > 0 {
+		bracketed := append([]string(nil), l.refs...)
+		for i, r := range bracketed {
+			bracketed[i] = "[[" + r + "]]"
+		}
+		add("refs", bracketed)
+	}
+	if l.detail != "" {
+		add("detail", "[["+l.detail+"]]")
+	}
+	if l.hasV2() {
+		sv := l.schemaVersion
+		if sv == 0 {
+			sv = MemorySchemaVersion
+		}
+		add("schemaVersion", sv)
+	}
+	for _, f := range []struct {
+		name string
+		v    string
+	}{
+		{"kind", l.kind}, {"scopeId", l.scopeID}, {"status", l.status},
+		{"evidenceClass", l.evidenceClass}, {"recordedAt", l.recordedAt},
+		{"updatedAt", l.updatedAt}, {"validFrom", l.validFrom}, {"validTo", l.validTo},
+		{"reason", l.reason},
+	} {
+		if f.v != "" {
+			add(f.name, f.v)
+		}
+	}
+	if len(l.sourceRefs) > 0 {
+		add("sourceRefs", l.sourceRefs)
+	}
+	if len(l.supersedes) > 0 {
+		add("supersedes", l.supersedes)
+	}
+	if len(l.derivedFrom) > 0 {
+		add("derivedFrom", l.derivedFrom)
+	}
+	if len(l.extra) > 0 {
+		names := make([]string, 0, len(l.extra))
+		for name := range l.extra {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			kb, _ := json.Marshal(name)
+			pairs = append(pairs, string(kb)+":"+string(l.extra[name]))
+		}
+	}
+	return "- memory: {" + strings.Join(pairs, ",") + "}"
 }
 
 // mergeMemoryIndex returns the whole document with one entry replaced or
@@ -110,15 +353,16 @@ func mergeMemoryIndex(markdown string, l *memoryLine) (string, bool) {
 	newLine := l.render()
 	lines := strings.Split(markdown, "\n")
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "- memory: ") {
-			continue
-		}
-		if parsed := parseMemoryIndex(line); len(parsed) == 1 && parsed[0].key == l.key {
-			if line == newLine {
+		if parsed, ok := parseMemoryLine(line); ok && parsed.key == l.key {
+			if parsed.render() == newLine {
 				return markdown, false
 			}
-			lines[i] = newLine
+			prefix := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			suffix := ""
+			if strings.HasSuffix(line, "\r") {
+				suffix = "\r"
+			}
+			lines[i] = prefix + newLine + suffix
 			return strings.Join(lines, "\n"), true
 		}
 	}
@@ -128,17 +372,29 @@ func mergeMemoryIndex(markdown string, l *memoryLine) (string, bool) {
 	return markdown + newLine + "\n", true
 }
 
-// MemoryRememberInput is one governed index mutation.
+// MemoryRememberInput is one governed index mutation. Omitted metadata
+// preserves existing values; explicit clearing happens only through
+// documented operations (revise), never by accidentally sending null.
 type MemoryRememberInput struct {
-	Folder           string   `json:"folder,omitempty"`
-	ExpectedRevision string   `json:"expectedRevision,omitempty"`
-	Key              string   `json:"key"`
-	Text             string   `json:"text"`
-	Scope            string   `json:"scope,omitempty"`
-	Refs             []string `json:"refs,omitempty"`
-	Detail           string   `json:"detail,omitempty"`
-	DetailPath       string   `json:"detailPath,omitempty"`
-	DetailRevision   string   `json:"detailRevision,omitempty"`
+	Folder           string            `json:"folder,omitempty"`
+	ExpectedRevision string            `json:"expectedRevision,omitempty"`
+	Key              string            `json:"key"`
+	Text             string            `json:"text"`
+	Scope            string            `json:"scope,omitempty"`
+	Refs             []string          `json:"refs,omitempty"`
+	Detail           string            `json:"detail,omitempty"`
+	DetailPath       string            `json:"detailPath,omitempty"`
+	DetailRevision   string            `json:"detailRevision,omitempty"`
+	Kind             string            `json:"kind,omitempty"`
+	ScopeID          string            `json:"scopeId,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	EvidenceClass    string            `json:"evidenceClass,omitempty"`
+	ValidFrom        string            `json:"validFrom,omitempty"`
+	ValidTo          string            `json:"validTo,omitempty"`
+	SourceRefs       []MemorySourceRef `json:"sourceRefs,omitempty"`
+	Supersedes       []MemoryClaimRef  `json:"supersedes,omitempty"`
+	DerivedFrom      []MemoryClaimRef  `json:"derivedFrom,omitempty"`
+	ClearFields      []string          `json:"clearFields,omitempty"`
 }
 
 // MemoryReceipt is the compact confirmation of a remember operation.
@@ -160,6 +416,17 @@ func validateMemoryField(name, v string, max int) error {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// parseMemoryTime accepts only full RFC 3339 instants and normalizes
+// them to UTC; date-only or vague times are rejected rather than
+// converted into false precision. Unknown validity stays absent.
+func parseMemoryTime(name, v string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, domain.Invalid(name + " must be a full RFC 3339 instant with an explicit offset, e.g. 2026-10-22T08:00:00Z")
+	}
+	return t.UTC(), nil
+}
 
 func (s *Services) memoryMu(key string) *sync.Mutex {
 	s.mu.Lock()
@@ -256,6 +523,152 @@ func (s *Services) resolveMemoryRef(ctx context.Context, a *Actor, spaceID, targ
 	return ref, nil
 }
 
+// validateMemoryMetadata checks the typed v2 fields of a remember
+// request. Timestamps are normalized; inverted intervals and unknown
+// enum values are rejected at the trust boundary.
+func validateMemoryMetadata(in *MemoryRememberInput) (validFrom, validTo string, err error) {
+	if in.Kind != "" && !memoryKinds[in.Kind] {
+		return "", "", domain.Invalid("kind must be one of fact, preference, decision, episode, procedure or inference")
+	}
+	if in.Status != "" && !memoryStatuses[in.Status] {
+		return "", "", domain.Invalid("status must be one of active, superseded, disputed or retracted")
+	}
+	if in.EvidenceClass != "" && !memoryEvidenceClasses[in.EvidenceClass] {
+		return "", "", domain.Invalid("evidenceClass must be one of user-stated, observed, sourced or inferred")
+	}
+	if err := validateMemoryField("scopeId", in.ScopeID, 64); err != nil {
+		return "", "", err
+	}
+	for name, value := range map[string]string{"validFrom": in.ValidFrom, "validTo": in.ValidTo} {
+		if err := validateMemoryField(name, value, 128); err != nil {
+			return "", "", err
+		}
+	}
+	var from, to time.Time
+	if in.ValidFrom != "" {
+		if from, err = parseMemoryTime("validFrom", in.ValidFrom); err != nil {
+			return "", "", err
+		}
+		validFrom = from.Format(time.RFC3339Nano)
+	}
+	if in.ValidTo != "" {
+		if to, err = parseMemoryTime("validTo", in.ValidTo); err != nil {
+			return "", "", err
+		}
+		validTo = to.Format(time.RFC3339Nano)
+	}
+	if !from.IsZero() && !to.IsZero() && from.After(to) {
+		return "", "", domain.Invalid("validFrom must not be after validTo")
+	}
+	if len(in.DerivedFrom) > 16 {
+		return "", "", domain.Invalid("at most 16 derivedFrom references are allowed")
+	}
+	if len(in.SourceRefs) > 16 {
+		return "", "", domain.Invalid("at most 16 sourceRefs are allowed")
+	}
+	for i := range in.SourceRefs {
+		sr := &in.SourceRefs[i]
+		if err := validateMemoryField("sourceRef.observedAt", sr.ObservedAt, 128); err != nil {
+			return "", "", err
+		}
+		if err := validateMemoryField("sourceRef.target", sr.Target, 1024); err != nil || sr.Target == "" {
+			return "", "", domain.Invalid("sourceRef.target is required and must be at most 1024 characters")
+		}
+		if sr.Kind != "" && !memorySourceKinds[sr.Kind] {
+			return "", "", domain.Invalid("sourceRef.kind must be document, external or interaction")
+		}
+		if err := validateMemoryField("sourceRef.quote", sr.Quote, 500); err != nil {
+			return "", "", err
+		}
+		if err := validateMemoryField("sourceRef.locator", sr.Locator, 1024); err != nil {
+			return "", "", err
+		}
+		if err := validateMemoryField("sourceRef.revision", sr.Revision, 128); err != nil {
+			return "", "", err
+		}
+	}
+	if len(in.Supersedes) > 16 {
+		return "", "", domain.Invalid("at most 16 supersedes references are allowed")
+	}
+	for i := range in.Supersedes {
+		if !memoryKeyRe.MatchString(in.Supersedes[i].Key) {
+			return "", "", domain.Invalid("supersedes.key must match ^[a-z0-9][a-z0-9._-]{0,95}$")
+		}
+		if err := validateMemoryField("supersedes.indexRevision", in.Supersedes[i].IndexRevision, 128); err != nil {
+			return "", "", err
+		}
+	}
+	return validFrom, validTo, nil
+}
+
+// resolveMemorySourceRef pins in-vault document evidence to a revision
+// and marks it server-verified; external and interaction evidence is
+// recorded as agent-supplied without any claim of server verification.
+// The server never fetches URLs or expands arbitrary filesystem paths.
+func (s *Services) resolveMemorySourceRef(ctx context.Context, a *Actor, spaceID string, sr *MemorySourceRef) error {
+	sr.Available = nil
+	sr.Stale = false
+	sr.Verified = false
+	sr.Path = ""
+	if sr.ObservedAt != "" {
+		at, err := parseMemoryTime("sourceRef.observedAt", sr.ObservedAt)
+		if err != nil {
+			return err
+		}
+		sr.ObservedAt = at.Format(time.RFC3339Nano)
+	}
+	if sr.Kind == "external" || sr.Kind == "interaction" {
+		sr.Verified = false
+		sr.DocumentID = ""
+		return nil
+	}
+	target := sr.DocumentID
+	if target == "" {
+		target = sr.Target
+	}
+	ref, err := s.resolveMemoryRef(ctx, a, spaceID, target)
+	if err != nil {
+		return err
+	}
+	if ref.Available && ref.Kind == "document" {
+		sr.Target, sr.DocumentID, sr.Path, sr.Kind = ref.DocumentID, ref.DocumentID, ref.Path, "document"
+		if sr.Revision == "" {
+			sr.Revision = ref.Revision
+		}
+		// A pinned revision must actually exist in this document's
+		// history; reading a historical body uses the caller's history
+		// grant, so verification can never bypass it. A recorded quote
+		// must occur in the pinned body: evidence cannot be fabricated.
+		if sr.Revision != ref.Revision {
+			body, err := s.RevisionContent(ctx, a, spaceID, ref.DocumentID, sr.Revision)
+			if err != nil {
+				return err
+			}
+			if sr.Quote != "" && !strings.Contains(body, sr.Quote) {
+				return domain.Invalid("sourceRef quote does not occur in the pinned revision body")
+			}
+		} else if sr.Quote != "" {
+			note, err := s.ReadNote(ctx, a, spaceID, ref.DocumentID)
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(note.Markdown, sr.Quote) {
+				return domain.Invalid("sourceRef quote does not occur in the pinned body")
+			}
+		}
+		sr.Verified = true
+		return nil
+	}
+	if sr.Kind == "document" {
+		return domain.Invalid("sourceRef document target must be an existing document in this vault: " + sr.Target)
+	}
+	// Unresolvable bare targets are agent-supplied evidence (URLs,
+	// conversation references); the server records them without
+	// fetching and without claiming verification.
+	sr.Kind, sr.Verified = "external", false
+	return nil
+}
+
 // RememberMemory upserts one short entry in the agent-memory index while
 // preserving unrelated entries. References must resolve to live vault
 // resources; long details go to a linked document. The index write uses
@@ -271,6 +684,10 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 	if in == nil {
 		return nil, domain.Invalid("memory input required")
 	}
+	if err := validateMemoryField("idempotencyKey", idemKey, 1024); err != nil {
+		return nil, err
+	}
+	in = copyMemoryInput(in)
 	folder, err := memoryFolder(in.Folder)
 	if err != nil {
 		return nil, err
@@ -281,6 +698,11 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 	defer lock.Unlock()
 	request, _ := json.Marshal(in)
 	requestHash := shaHex(request)
+	hasIntent, intentErr := s.memoryIntent(ctx, a, spaceID, idemKey, "memory_index", requestHash, false)
+	if intentErr != nil {
+		return nil, intentErr
+	}
+
 	if idemKey != "" {
 		op, err := s.Docs.FindOperationByIdempotency(ctx, spaceID, a.UserID, idemKey)
 		if err != nil {
@@ -317,8 +739,12 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 			return nil, err
 		}
 	}
-	if utf8.RuneCountInString(in.Detail) > 20000 {
-		return nil, domain.Invalid("detail exceeds 20000 characters")
+	if err := validateMemoryField("detail", in.Detail, 20000); err != nil {
+		return nil, err
+	}
+	validFrom, validTo, err := validateMemoryMetadata(in)
+	if err != nil {
+		return nil, err
 	}
 
 	line := &memoryLine{key: in.Key, scope: in.Scope, text: in.Text}
@@ -337,14 +763,29 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 			return nil, err
 		}
 	}
+	if hasIntent {
+		recovered, err := s.recoverRememberReceipt(ctx, a, spaceID, idemKey, indexPath, index, indexNote, in, requestHash)
+		if err != nil {
+			return nil, err
+		}
+		if recovered != nil {
+			return recovered, nil
+		}
+	}
 	if in.ExpectedRevision != "" && (indexNote == nil || indexNote.Revision != in.ExpectedRevision) {
 		return nil, domain.Conflict("memory index changed; recall and merge before retrying")
 	}
+
+	existingRender := ""
 	if indexNote != nil {
+		if err := memoryIndexGuard(indexNote.Markdown, in.Key); err != nil {
+			return nil, err
+		}
 		if len(indexNote.Markdown) > 1<<20 {
 			return nil, domain.TooLarge("memory index exceeds 1 MiB; split memory into scoped folders")
 		}
 		found := false
+		var existing *memoryLine
 		for _, entry := range parseMemoryIndex(indexNote.Markdown) {
 			if entry.key != in.Key {
 				continue
@@ -353,14 +794,74 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 				return nil, domain.Conflict("duplicate memory keys in index; resolve them before updating")
 			}
 			found = true
-			line.detail = entry.detail
-			if in.Refs == nil {
-				line.refs = append([]string(nil), entry.refs...)
-			}
-			if in.Scope == "" {
-				line.scope = entry.scope
-			}
+			existing = entry
 		}
+		if existing != nil {
+			if existing.schemaVersion > MemorySchemaVersion {
+				return nil, domain.Unsupported("memory entry uses a newer schema version; this server refuses to rewrite it")
+			}
+			// Omitted metadata preserves existing values, including
+			// unknown fields kept losslessly in extra.
+			*line = *existing
+			line.refs = append([]string(nil), existing.refs...)
+			line.sourceRefs = append([]MemorySourceRef(nil), existing.sourceRefs...)
+			line.supersedes = append([]MemoryClaimRef(nil), existing.supersedes...)
+			line.derivedFrom = append([]MemoryClaimRef(nil), existing.derivedFrom...)
+			line.extra = map[string]json.RawMessage{}
+			for k, v := range existing.extra {
+				line.extra[k] = v
+			}
+			if in.Refs == nil {
+				// refs omitted: keep existing links
+			} else {
+				line.refs = nil
+			}
+			if in.Text != existing.text {
+				line.text = in.Text
+			}
+			if in.SourceRefs != nil {
+				line.sourceRefs = nil
+			}
+			existingRender = existing.render()
+		}
+	}
+	// Typed metadata applies to new and existing entries alike; an
+	// omitted field preserves the existing value on updates.
+	if in.Scope != "" {
+		line.scope = in.Scope
+	}
+	if in.Kind != "" {
+		line.kind = in.Kind
+	}
+	if in.ScopeID != "" {
+		line.scopeID = in.ScopeID
+	}
+	if in.Status != "" {
+		line.status = in.Status
+	}
+	if in.EvidenceClass != "" {
+		line.evidenceClass = in.EvidenceClass
+	}
+	if in.ValidFrom != "" {
+		line.validFrom = validFrom
+	}
+	if in.ValidTo != "" {
+		line.validTo = validTo
+	}
+	if in.DerivedFrom != nil {
+		line.derivedFrom = nil
+	}
+	for _, claim := range in.DerivedFrom {
+		if err := s.resolveMemoryClaim(ctx, a, spaceID, index, &claim); err != nil {
+			return nil, err
+		}
+		line.derivedFrom = append(line.derivedFrom, claim)
+	}
+	for _, claim := range in.Supersedes {
+		if err := s.resolveMemoryClaim(ctx, a, spaceID, index, &claim); err != nil {
+			return nil, err
+		}
+		line.supersedes = append(line.supersedes, claim)
 	}
 
 	for _, target := range in.Refs {
@@ -377,7 +878,45 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 			line.refs = append(line.refs, ref.Path) // folders keep their path
 		}
 	}
+	for i := range in.SourceRefs {
+		if err := s.resolveMemorySourceRef(ctx, a, spaceID, &in.SourceRefs[i]); err != nil {
+			return nil, err
+		}
+		line.sourceRefs = append(line.sourceRefs, in.SourceRefs[i])
+	}
 
+	if err := clearMemoryFields(line, in.ClearFields); err != nil {
+		return nil, err
+	}
+	if err := validateMergedMemory(line); err != nil {
+		return nil, err
+	}
+
+	// Preflight the final index size before a detail can commit. Reserve the
+	// longest generated timestamp and a stable document ID, never its full body.
+	probe := *line
+	if in.Detail != "" && probe.detail == "" {
+		probe.detail = "doc_00000000000000000000000000"
+	}
+	if probe.hasV2() {
+		probe.updatedAt = "2026-10-23T00:00:00.123456789Z"
+		if probe.recordedAt == "" {
+			probe.recordedAt = probe.updatedAt
+		}
+		if probe.status == "" {
+			probe.status = "active"
+		}
+	}
+	projected := memoryIndexHeader + probe.render() + "\n"
+	if indexNote != nil {
+		projected, _ = mergeMemoryIndex(indexNote.Markdown, &probe)
+	}
+	if len(projected) > 1<<20 || int64(len(projected)) > s.Cfg.MaxNoteBytes {
+		return nil, domain.TooLarge("updated memory index exceeds its capacity; partition scoped folders before writing detail")
+	}
+	if _, err := s.memoryIntent(ctx, a, spaceID, idemKey, "memory_index", requestHash, true); err != nil {
+		return nil, err
+	}
 	if in.Detail != "" {
 		detailPath := in.DetailPath
 		if detailPath == "" {
@@ -431,7 +970,7 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 				if in.DetailRevision != note.Revision {
 					return nil, domain.PreconditionFailed(note.Revision)
 				}
-				saved, err := s.SaveContent(ctx, a, spaceID, existing.ID, note.Revision, in.Detail, memoryStepKey(idemKey, "detail"))
+				saved, err := s.SaveContent(ctx, a, spaceID, existing.ID, note.Revision, in.Detail, memoryStepKey(idemKey, "detail"), shaHex([]byte(note.Markdown)))
 				if err != nil {
 					return nil, err
 				}
@@ -457,6 +996,25 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 		receipt.DetailPath = canon
 	}
 
+	// An inference is not verified current knowledge on its own: it
+	// must point at supporting evidence the audit trail can follow.
+	if line.kind == "inference" && len(line.sourceRefs) == 0 && len(line.refs) == 0 && len(line.derivedFrom) == 0 {
+		return nil, domain.Invalid("an inference requires supporting evidence: sourceRefs, refs or derivedFrom")
+	}
+
+	// A no-op retry must not advance updatedAt or rewrite bytes.
+	dirty := existingRender == "" || line.render() != existingRender
+	if dirty && line.hasV2() {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		if line.recordedAt == "" {
+			line.recordedAt = now
+		}
+		line.updatedAt = now
+		if line.status == "" {
+			line.status = "active"
+		}
+	}
+
 	if index == nil || index.TombstoneAt != nil {
 		created, err := s.CreateNote(ctx, a, spaceID, indexPath, memoryIndexHeader+line.render()+"\n", memoryStepKey(idemKey, "index"), false)
 		if err != nil {
@@ -466,10 +1024,13 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 	} else {
 		note := indexNote
 		merged, changed := mergeMemoryIndex(note.Markdown, line)
+		if len(merged) > 1<<20 {
+			return nil, domain.TooLarge("memory index would exceed 1 MiB; partition scoped folders")
+		}
 		if !changed {
 			receipt.Status, receipt.IndexRevision = "unchanged", note.Revision
 		} else {
-			saved, err := s.SaveContent(ctx, a, spaceID, index.ID, note.Revision, merged, memoryStepKey(idemKey, "index"))
+			saved, err := s.SaveContent(ctx, a, spaceID, index.ID, note.Revision, merged, memoryStepKey(idemKey, "index"), shaHex([]byte(note.Markdown)))
 			if err != nil {
 				return nil, err
 			}
@@ -504,6 +1065,61 @@ func (s *Services) RememberMemory(ctx context.Context, a *Actor, spaceID string,
 	return receipt, nil
 }
 
+// recoverRememberReceipt rebuilds the receipt of a completed remember
+// whose final journal insert was lost. It requires proof that the
+// committed index write is this request's own child: the deterministic
+// step key, the exact bytes now stored, and the save pinned to this
+// request's expected revision.
+func (s *Services) recoverRememberReceipt(ctx context.Context, a *Actor, space, idem, indexPath string, index *domain.Document, note *NoteContent, in *MemoryRememberInput, hash string) (*MemoryReceipt, error) {
+	if index == nil || note == nil {
+		return nil, nil
+	}
+	produced, err := s.memoryOwnedRevision(ctx, a, space, idem, index.ID, in.ExpectedRevision, note.Markdown)
+	if err != nil {
+		return nil, err
+	}
+	if produced == "" {
+		return nil, nil
+	}
+	if produced != note.Revision {
+		return nil, domain.Conflict("index was edited after the committed memory step; preserve that edit")
+	}
+	if err := memoryIndexGuard(note.Markdown, in.Key); err != nil {
+		return nil, err
+	}
+	var entry *memoryLine
+	for _, line := range parseMemoryIndex(note.Markdown) {
+		if line.key == in.Key {
+			entry = line
+		}
+	}
+	if entry == nil || entry.text != in.Text {
+		return nil, domain.Conflict("saved memory child differs from the bound request")
+	}
+	receipt := &MemoryReceipt{Key: in.Key, Status: "updated", IndexPath: indexPath, IndexRevision: produced, Verified: true}
+	child, _ := s.Docs.FindOperationByIdempotency(ctx, space, a.UserID, memoryStepKey(idem, "index"))
+	if child != nil && child.Kind == domain.OpKindCreate {
+		receipt.Status = "created"
+	}
+	if in.Detail != "" {
+		if entry.detail == "" {
+			return nil, domain.Unavailable("saved index lacks its exact detail link")
+		}
+		detail, err := s.ReadNote(ctx, a, space, entry.detail)
+		if err != nil {
+			return nil, err
+		}
+		if detail.Markdown != in.Detail {
+			return nil, domain.Conflict("detail changed after the committed memory step")
+		}
+		receipt.DetailPath, receipt.DetailRevision = detail.Path, detail.Revision
+	}
+	if err := s.saveMemoryReceipt(ctx, a, space, idem, "memory_index", hash, receipt); err != nil {
+		return nil, err
+	}
+	return receipt, nil
+}
+
 func mustNormKey(p string) string {
 	_, key, err := domain.NormalizePath(p)
 	if err != nil {
@@ -521,15 +1137,24 @@ func mustDocID(ctx context.Context, s *Services, spaceID, p string) string {
 }
 
 // MemoryRecallInput filters the index without loading linked bodies.
+// Filters are part of the continuation identity: a later page must
+// present the same queryHash and index revision, never a mix of
+// snapshots or reinterpreted filters.
 type MemoryRecallInput struct {
-	Folder   string `json:"folder,omitempty"`
-	Revision string `json:"revision,omitempty"`
-	Query    string `json:"query,omitempty"`
-	Scope    string `json:"scope,omitempty"`
-	Key      string `json:"key,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
-	Offset   int    `json:"offset,omitempty"`
-	MaxBytes int    `json:"maxBytes,omitempty"`
+	Cursor    string `json:"cursor,omitempty"`
+	Folder    string `json:"folder,omitempty"`
+	Revision  string `json:"revision,omitempty"`
+	QueryHash string `json:"queryHash,omitempty"`
+	Query     string `json:"query,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Kind      string `json:"kind,omitempty"`
+	ScopeID   string `json:"scopeId,omitempty"`
+	Status    string `json:"status,omitempty"`
+	ValidOn   string `json:"validOn,omitempty"`
+	Limit     int    `json:"limit,omitempty"`
+	Offset    int    `json:"offset,omitempty"`
+	MaxBytes  int    `json:"maxBytes,omitempty"`
 }
 
 // MemoryRecallResult is bounded: entries past the limit or byte budget
@@ -537,13 +1162,26 @@ type MemoryRecallInput struct {
 type MemoryRecallResult struct {
 	IndexPath     string        `json:"indexPath"`
 	IndexRevision string        `json:"indexRevision,omitempty"`
+	QueryHash     string        `json:"queryHash,omitempty"`
 	Entries       []MemoryEntry `json:"entries"`
 	Matched       int           `json:"matched"`
 	Offset        int           `json:"offset"`
 	HasMore       bool          `json:"hasMore"`
 	NextOffset    int           `json:"nextOffset,omitempty"`
+	NextCursor    string        `json:"nextCursor,omitempty"`
 	Truncated     bool          `json:"truncated,omitempty"`
 	Note          string        `json:"note,omitempty"`
+	Diagnostics   []string      `json:"diagnostics,omitempty"`
+}
+
+// recallQueryHash pins continuation to the complete filter
+// configuration, not just the index revision.
+func recallQueryHash(in *MemoryRecallInput) string {
+	b, _ := json.Marshal(struct {
+		Folder, Query, Scope, Key, Kind, ScopeID, Status, ValidOn string
+		Limit, MaxBytes                                           int
+	}{in.Folder, in.Query, in.Scope, in.Key, in.Kind, in.ScopeID, in.Status, in.ValidOn, in.Limit, in.MaxBytes})
+	return shaHex(b)[:16]
 }
 
 func (s *Services) recallRef(ctx context.Context, a *Actor, spaceID, target string) MemoryRef {
@@ -554,11 +1192,54 @@ func (s *Services) recallRef(ctx context.Context, a *Actor, spaceID, target stri
 	return *ref
 }
 
+// recallSourceRef reports evidence state conservatively at read time:
+// a missing or trashed source lowers auditability but is not proof the
+// claim is false, and a pinned revision never silently follows forward.
+func (s *Services) recallSourceRef(ctx context.Context, a *Actor, spaceID string, sr MemorySourceRef) MemorySourceRef {
+	out := sr
+	if sr.Kind == "external" || sr.Kind == "interaction" {
+		out.Verified = false
+		out.Available = nil
+		out.Stale = false
+		out.DocumentID = ""
+		out.Path = ""
+		return out
+	}
+	if sr.Kind == "document" || sr.DocumentID != "" {
+		available, stale := false, false
+		if d, err := s.Docs.Document(ctx, sr.DocumentID); err == nil && d != nil && d.SpaceID == spaceID && d.TombstoneAt == nil {
+			available = true
+			out.Path = d.Path
+			if sr.Revision != "" && sr.Revision != d.CurrentRevision {
+				stale = true
+			}
+		}
+		if !available {
+			out.Verified = false
+		}
+		out.Available, out.Stale = &available, stale
+	}
+	return out
+}
+
 // RecallMemory returns filtered index entries and their resolved links
 // only; linked document bodies are never included.
 func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, in *MemoryRecallInput) (*MemoryRecallResult, error) {
 	if _, err := s.Require(ctx, a, spaceID, domain.ActionRead); err != nil {
 		return nil, err
+	}
+	ctx = memoryClaimContext(ctx, s, a, spaceID)
+	in, generation, err := s.prepareMemoryRecall(ctx, spaceID, in)
+	if err != nil {
+		return nil, err
+	}
+	for name, field := range map[string]struct {
+		value string
+		max   int
+	}{"query": {in.Query, 500}, "scope": {in.Scope, 64}, "key": {in.Key, 96}, "scopeId": {in.ScopeID, 64}, "revision": {in.Revision, 128}, "queryHash": {in.QueryHash, 64}} {
+		if err := validateMemoryField(name, field.value, field.max); err != nil {
+			return nil, err
+		}
 	}
 	folder, err := memoryFolder(in.Folder)
 	if err != nil {
@@ -570,6 +1251,18 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 	}
 	if in.Offset > 0 && in.Revision == "" {
 		return nil, domain.Invalid("revision from the first recall page is required with offset")
+	}
+	if in.Kind != "" && !memoryKinds[in.Kind] {
+		return nil, domain.Invalid("kind filter must be one of fact, preference, decision, episode, procedure or inference")
+	}
+	if in.Status != "" && in.Status != "all" && !memoryStatuses[in.Status] {
+		return nil, domain.Invalid("status filter must be active, superseded, disputed, retracted or all")
+	}
+	var validOnTime time.Time
+	if in.ValidOn != "" {
+		if validOnTime, err = parseMemoryTime("validOn", in.ValidOn); err != nil {
+			return nil, err
+		}
 	}
 	if in.Limit <= 0 {
 		in.Limit = 20
@@ -586,7 +1279,16 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 	if in.Offset < 0 {
 		return nil, domain.Invalid("offset must not be negative")
 	}
-	out := &MemoryRecallResult{IndexPath: indexPath, Entries: []MemoryEntry{}, Offset: in.Offset}
+	qh := recallQueryHash(in)
+	if in.Offset > 0 {
+		if in.QueryHash == "" && (in.Kind != "" || in.ScopeID != "" || in.Status != "" || in.ValidOn != "") {
+			return nil, domain.Invalid("queryHash from the first recall page is required with typed filters and offset")
+		}
+		if in.QueryHash != "" && in.QueryHash != qh {
+			return nil, domain.Conflict("continuation query differs from the first page; restart recall instead of mixing snapshots")
+		}
+	}
+	out := &MemoryRecallResult{IndexPath: indexPath, QueryHash: qh, Entries: []MemoryEntry{}, Offset: in.Offset}
 	index, err := s.Docs.DocumentByNormKey(ctx, spaceID, mustNormKey(indexPath))
 	if err != nil {
 		return nil, err
@@ -606,6 +1308,13 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 		return nil, err
 	}
 	out.IndexRevision = note.Revision
+	if len(note.Markdown) > 1<<20 {
+		return nil, domain.TooLarge("memory index exceeds 1 MiB; split memory into scoped folders")
+	}
+	out.Diagnostics = memoryIndexDiagnostics(note.Markdown)
+	if in.Offset > 0 && in.QueryHash == "" {
+		out.Note = "Legacy continuation binds revision only; return queryHash to bind all filters"
+	}
 	if in.Revision != "" && in.Revision != note.Revision {
 		return nil, domain.Conflict("memory index changed; restart recall")
 	}
@@ -614,6 +1323,7 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 	}
 	q := strings.ToLower(strings.TrimSpace(in.Query))
 	scopeWant := strings.ToLower(strings.TrimSpace(in.Scope))
+	statusWant := in.Status
 	var matched []*memoryLine
 	for _, l := range parseMemoryIndex(note.Markdown) {
 		if in.Key != "" && l.key != in.Key {
@@ -622,25 +1332,99 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 		if scopeWant != "" && strings.ToLower(l.scope) != scopeWant {
 			continue
 		}
+		if in.Kind != "" && l.kind != in.Kind {
+			continue
+		}
+		if in.ScopeID != "" && l.scopeID != in.ScopeID {
+			continue
+		}
+		// Legacy entries carry no status: they are current knowledge
+		// unless explicitly marked otherwise. "all" restores full
+		// historical discoverability including superseded and retracted.
+		if statusWant != "" && statusWant != "all" {
+			st := l.status
+			if st == "" {
+				st = "active"
+			}
+			if st != statusWant {
+				continue
+			}
+		}
+		if in.ValidOn != "" {
+			if l.validFrom != "" {
+				if from, err := time.Parse(time.RFC3339, l.validFrom); err == nil && validOnTime.Before(from) {
+					continue
+				}
+			}
+			if l.validTo != "" {
+				// validTo is exclusive: the claim no longer holds at
+				// or after the boundary instant.
+				if to, err := time.Parse(time.RFC3339, l.validTo); err == nil && !validOnTime.Before(to) {
+					continue
+				}
+			}
+			// Unknown validity is absent, not the ingestion date: an
+			// entry without an interval is never excluded by validOn.
+		}
 		if q != "" && !strings.Contains(strings.ToLower(l.key+" "+l.scope+" "+l.text), q) {
 			continue
 		}
 		matched = append(matched, l)
 	}
 	out.Matched = len(matched)
+	inspector, _ := s.newDerivedInspector(ctx, a, spaceID)
 	for i := in.Offset; i < len(matched); i++ {
 		l := matched[i]
+		if len(l.refs) > 16 || len(l.sourceRefs) > 16 || len(l.supersedes) > 16 || len(l.derivedFrom) > 16 {
+			return nil, domain.TooLarge("stored entry exceeds the 16-reference list limit; repair or partition it before recall")
+		}
 		if len(out.Entries) >= in.Limit {
 			out.HasMore = true
 			out.NextOffset = i
 			break
 		}
-		entry := MemoryEntry{Key: l.key, Scope: l.scope, Text: l.text}
+		entry := MemoryEntry{Key: l.key, Scope: l.scope, Text: l.text,
+			Kind: l.kind, ScopeID: l.scopeID, Status: l.status, EvidenceClass: l.evidenceClass,
+			RecordedAt: l.recordedAt, UpdatedAt: l.updatedAt, ValidFrom: l.validFrom, ValidTo: l.validTo}
+		if l.hasV2() {
+			sv := l.schemaVersion
+			if sv == 0 {
+				sv = MemorySchemaVersion
+			}
+			entry.SchemaVersion = sv
+		}
+		for _, sr := range l.sourceRefs {
+			entry.SourceRefs = append(entry.SourceRefs, s.recallSourceRef(ctx, a, spaceID, sr))
+		}
+		entry.Supersedes = append([]MemoryClaimRef(nil), l.supersedes...)
+		entry.DerivedFrom = append([]MemoryClaimRef(nil), l.derivedFrom...)
+		if len(l.derivedFrom) > 0 {
+			entry.DerivedState = s.memoryClaimsState(ctx, a, spaceID, l.derivedFrom)
+		}
 		for _, target := range l.refs {
-			entry.Refs = append(entry.Refs, s.recallRef(ctx, a, spaceID, target))
+			ref := s.recallRef(ctx, a, spaceID, target)
+			if inspector != nil && ref.Available && ref.DocumentID != "" {
+				state, err := inspector.inspect(ref.DocumentID, 0, nil)
+				if err != nil {
+					return nil, err
+				}
+				if state != nil {
+					ref.DerivedStatus = state.Status
+				}
+			}
+			entry.Refs = append(entry.Refs, ref)
 		}
 		if l.detail != "" {
 			r := s.recallRef(ctx, a, spaceID, l.detail)
+			if inspector != nil && r.Available && r.DocumentID != "" {
+				state, err := inspector.inspect(r.DocumentID, 0, nil)
+				if err != nil {
+					return nil, err
+				}
+				if state != nil {
+					r.DerivedStatus = state.Status
+				}
+			}
 			entry.Detail = &r
 		}
 		out.Entries = append(out.Entries, entry)
@@ -650,6 +1434,7 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 		} else {
 			out.NextOffset = 0
 		}
+		out.NextCursor = memoryNextCursor(spaceID, generation, in, out)
 		encoded, _ := json.Marshal(out)
 		if len(encoded) > in.MaxBytes {
 			out.Entries = out.Entries[:len(out.Entries)-1]
@@ -661,6 +1446,14 @@ func (s *Services) RecallMemory(ctx context.Context, a *Actor, spaceID string, i
 			out.Truncated = true
 			break
 		}
+	}
+	out.NextCursor = memoryNextCursor(spaceID, generation, in, out)
+	latest, err := s.Docs.MaxEventSeq(ctx, spaceID)
+	if err != nil {
+		return nil, err
+	}
+	if latest != generation {
+		return nil, domain.Conflict("vault changed during memory recall; restart retrieval")
 	}
 	if len(encodeMemoryEnvelope(out)) > in.MaxBytes {
 		return nil, domain.TooLarge("memory response exceeds maxBytes")

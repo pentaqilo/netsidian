@@ -201,7 +201,7 @@ func TestSchemaSevenUpgradePreservesAccounts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if countSQL(t, db, `SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version'`) != 9 || countSQL(t, db, `SELECT count(*) FROM users WHERE id='original' AND password_hash='old-proof'`) != 1 {
+		if countSQL(t, db, `SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version'`) != 10 || countSQL(t, db, `SELECT count(*) FROM users WHERE id='original' AND password_hash='old-proof'`) != 1 {
 			t.Fatal("upgrade lost account or schema version")
 		}
 		if err := db.StartTOTPBound(context.Background(), "original", "old-proof", []byte("sealed"), []string{"code"}, ""); err != nil {

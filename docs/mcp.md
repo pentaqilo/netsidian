@@ -210,13 +210,18 @@ fields. Existing generic adapters remain compatible.
 | `netsidian_document_read` | Exactly one of `documentId`/`path`; optional `offset`, `revision`, `maxBytes` | Markdown chunk, revision, `hasMore` and `nextOffset` |
 | `netsidian_document_create` | `path`, `markdown`, optional `idempotencyKey` | Document ID, path and revision |
 | `netsidian_document_update` | Exactly one of `documentId`/`path`, `markdown`, `revision`, optional `idempotencyKey` | Document ID and committed revision |
-| `netsidian_memory_recall` | Optional `folder`, `key`, `scope`, `query`, `limit`, `maxBytes`, `offset`, `revision` | Matching entries and references, never linked bodies |
-| `netsidian_memory_remember` | `key`, `text`; optional `folder`, `scope`, `refs`, `detail`, `detailPath`, `detailRevision`, `expectedRevision`, `idempotencyKey` | Compact verified receipt |
+| `netsidian_memory_recall` | Optional `folder`, `key`, `scope`, `query`, `kind`, `scopeId`, `status`, `validOn`, `cursor`, `limit`, `maxBytes` | Matching entries, resolved references, diagnostics and pinned continuation |
+| `netsidian_memory_remember` | `key`, `text`; optional destination, detail, revision guards, typed metadata/evidence and `idempotencyKey` | Verified index/detail receipt |
+| `netsidian_memory_revise` | `key`, `action`, `expectedRevision`; optional `text`, `reason`, classification, idempotency | Guarded correction, retraction, dispute or resolution |
+| `netsidian_memory_consolidate` | `operationId`, pinned `sources`, bounded `targets`/`entries`, optional `dryRun`, index `expectedRevision` | Applied or partial step receipt; durable retry identity |
+| `netsidian_memory_policy` | `part`, optional `maxBytes` | One versioned policy section; tools-only alternative to resources |
 
 `markdown` is required for both focused create and update tools; explicit empty
 strings are accepted. REST creation still uses `content`. Document continuation
-requires the first page's `revision`; memory continuation requires `indexRevision`
-in the next call's `revision`. Changed revisions fail instead of mixing versions.
+requires the first page's `revision`. For memory, pass the returned `nextCursor`
+as `cursor` without changing filters or budgets. It pins the request and vault
+generation; relevant concurrent changes require restarting recall. Legacy offset
+continuation remains supported; new typed filters also require its `queryHash`.
 Read every chunk before a full replacement. Search cursors retain existing query
 and index-generation guards.
 
@@ -278,3 +283,91 @@ are marked missing and never redirect to a different same-named document.
 Graph/backlink indexing recognizes the same references; startup reindexing repairs
 existing derived indexes. This does not grant cross-vault access or turn local
 filesystem paths into external links.
+
+
+### Evidence-backed memory policy 1.0.0
+
+Settings → MCP & agents → Agent memory separates provider, deployment location,
+audience, scope identity, destination and retention mode. New configurations use
+**selective** retention; existing workflows remain unadopted until explicitly
+adopted. Copying a skill does not install an agent or enable background learning.
+The ZIP contains the core, separate adapters, references and POSIX local helper.
+The copied skill contains only core, selected adapter and inert configuration.
+Local writes require installing the helper from the package; other remote
+providers must demonstrate their own conditional-write/recovery capabilities.
+
+`netsidian_connect` advertises the policy/schema version, caps and per-vault
+capabilities. Aggregate write permission does not authorize every vault. The same
+policy is available as `netsidian://memory-policy/1.0.0/{part}`, through
+`netsidian_memory_policy`, and `GET /api/v1/agent/memory-policy`. Load only needed
+sections. Static policy contains no private knowledge or credentials.
+
+Persisted entries may add `schemaVersion: 2`, `kind`, `scopeId`, `status`,
+`evidenceClass`, recording timestamps, `validFrom`/`validTo`, `sourceRefs`,
+`supersedes` and `derivedFrom`. Legacy entries remain readable with unknown
+provenance. Unknown stored metadata is preserved; unknown API inputs are rejected.
+Duplicate keys and unsupported future-schema mutations fail rather than silently
+selecting or rewriting a claim. Malformed lines remain in the file with bounded
+recall diagnostics. No startup migration occurs.
+
+`kind` is fact/preference/decision/episode/procedure/inference; `evidenceClass` is
+user-stated/observed/sourced/inferred. Status is active/superseded/disputed/retracted.
+Absent legacy status means active. Ordinary recall includes history unless
+filtered: explicitly request `status: "active"` for current knowledge. `validOn`
+uses RFC3339 instants, inclusive `validFrom` and exclusive `validTo`; unknown bounds
+are open. `scopeId` matches exactly and grants no permissions.
+
+`refs` navigate to current resources. Document evidence instead pins a revision:
+
+```json
+{"key":"project.storage","text":"SQLite supports the accepted offline workflow.","scope":"project","scopeId":"project-website","kind":"decision","evidenceClass":"sourced","refs":["doc_actual_id"],"sourceRefs":[{"target":"doc_actual_id","kind":"document","revision":"rev_actual_id"}],"idempotencyKey":"storage-decision-1"}
+```
+
+Replace illustrative IDs with discovered values. The source must be accessible
+in the same vault; historical content needs history permission. A quote is checked
+against the pinned body. External/interaction evidence is agent-supplied and never
+fetched or marked server-verified. `observedAt` is supplied evidence time, distinct
+from server recording time. A verification flag establishes persistence/source
+matching, not factual truth. Missing sources reduce auditability, not prove falsity.
+
+Omitted or null optional metadata preserves it. Explicit `sourceRefs: []`,
+`derivedFrom: []` or `refs: []` clears that list. `clearFields` explicitly clears
+supported metadata; consult the tool schema. Validation applies to the merged
+entry, including inference evidence and validity intervals, before detail writes.
+Claim references use `{vaultId,indexDocumentId,key,indexRevision}`; keys alone
+are not global identities. Server-computed fingerprints are not public inputs.
+
+Corrections require a current index revision and an idempotency key. `supersede`
+updates the topic while pinning its historical claim; `retract`, `dispute` and
+`resolve` change active use without erasing evidence/history. Retraction is not a
+forget/delete operation. Backup/history retention remains a separate concern.
+
+Consolidation is agent-authored, not server-side summarization. Dry-run first,
+then submit the identical plan with `dryRun: false`. The initial scope is at most
+16 sources, **one topical target**, and 32 existing index-entry changes. Document
+sources and existing targets require revisions; index changes require the index
+revision. Target Markdown is limited to 20000 Unicode characters; canonical plan JSON is
+capped at 96 KiB. Managed target
+sections preserve human-authored content; adoption of an existing unowned target
+must be explicit. Partial work is not an atomic transaction: inspect every step,
+retain the original operation identity and resolve recovery before making a new
+plan. Never bypass a conflict by overwriting a manual edit.
+
+REST equivalents live under `/api/v1/spaces/{space}/agent/memory/`:
+`POST recall`, `POST remember`, `POST revise`, `POST consolidate`, plus
+`GET derived` for dependency status and `GET operation?operationId=...` for
+read-only recovery status (optional `includePlan`, 128 KiB maximum). All use application services and normal
+vault/history permissions. Mutation idempotency headers and index/document guards
+remain distinct. The live OpenAPI describes exact inputs and outputs.
+
+Derived status uses the ordinary revision-guarded metadata index, bounded pages
+(20 default, 50 maximum), dependency depth 8, at most 16 direct sources and 256
+visited nodes. No whole-vault body scan or LLM regeneration runs on recall.
+Request one document or follow a generation-pinned status cursor. Stale, broken,
+cyclic, provisional and unavailable indexing states require review; they must not
+be presented as current. Standard local and S3 document indexing use the same
+metadata projection. No live S3 deployment is implied by this architecture.
+
+See [architecture and compatibility](agent-memory-architecture.md) and
+[validation report](agent-memory-validation.md) for tested failure cases,
+instruction budgets, backup/downgrade limitations and evaluation boundaries.

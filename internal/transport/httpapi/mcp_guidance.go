@@ -8,7 +8,7 @@ import (
 	"github.com/pentaqilo/netsidian/internal/service"
 )
 
-const mcpReadGuide = "Vaults: {space} must be the vault ID from netsidian_connect vaults[].id or GET /api/v1/spaces, never its name or slug. Memory: focused tools use markdown consistently. REST creates documents with {path, content} and updates content with {markdown} and the current If-Match revision. An explicit empty markdown string clears the document. Read back the saved document and verify its content before claiming a preference was remembered. Preserve the user’s preference wording verbatim; do not translate or correct names or honorifics. Documents: {doc} is an ID, never a file path. Read content directly with GET /api/v1/spaces/{space}/documents/by-path and query.path, or resolve GET /api/v1/spaces/{space}/documents/lookup with query.path then read GET /api/v1/spaces/{space}/documents/{doc} using the returned id. Maps: GET /api/v1/spaces/{space}/mindmaps/mindmap accepts the folder path or its mindmap.md file in query.path; use the returned folder path for mutations."
+const mcpReadGuide = "Vaults: {space} must be the vault ID from netsidian_connect vaults[].id or GET /api/v1/spaces, never its name or slug. Memory: focused tools use markdown consistently. REST creates documents with {path, content} and updates content with {markdown} and the current If-Match revision. An explicit empty markdown string clears the document. A verified memory receipt is sufficient; generic document writes need targeted read-back before claiming persistence. Preserve the user’s preference wording verbatim; do not translate or correct names or honorifics. Documents: {doc} is an ID, never a file path. Read content directly with GET /api/v1/spaces/{space}/documents/by-path and query.path, or resolve GET /api/v1/spaces/{space}/documents/lookup with query.path then read GET /api/v1/spaces/{space}/documents/{doc} using the returned id. Maps: GET /api/v1/spaces/{space}/mindmaps/mindmap accepts the folder path or its mindmap.md file in query.path; use the returned folder path for mutations."
 
 func (s *Server) mcpCredential(ctx context.Context) (*service.AgentWhoami, error) {
 	actor := desktopMCPActor(ctx)
@@ -85,6 +85,12 @@ func mcpCredentialOperation(op mcpOperation, who *service.AgentWhoami) mcpOperat
 // These are permission prerequisites for the core knowledge surfaces, not a
 // substitute for checking the target vault, revision and request body at call time.
 func mcpKnowledgeGrants(op mcpOperation) []string {
+	if strings.Contains(op.Path, "/agent/memory/") {
+		if mcpReadOperation(op) {
+			return []string{"read"}
+		}
+		return []string{"read", "edit"}
+	}
 	if strings.Contains(op.Path, "/documents") {
 		if op.Method == "GET" || op.Method == "HEAD" {
 			if strings.Contains(op.Path, "/revisions") {
@@ -126,4 +132,24 @@ func documentIDParameterHint(name, value string) string {
 		return documentReadGuide
 	}
 	return ""
+}
+
+func memoryVaultCapabilities(who *service.AgentWhoami) map[string]map[string]bool {
+	result := map[string]map[string]bool{}
+	if who == nil {
+		return result
+	}
+	for _, vault := range who.Vaults {
+		read, write := false, false
+		for _, op := range vault.AllowedOperations {
+			if op == "read" {
+				read = true
+			}
+			if op == "edit" {
+				write = true
+			}
+		}
+		result[vault.ID] = map[string]bool{"recall": read, "remember": read && write, "revise": read && write, "consolidate": read && write, "derivedStatus": read}
+	}
+	return result
 }

@@ -182,8 +182,15 @@ func (s *Server) Handler() http.Handler {
 	doc("GET /api/v1/spaces/{space}/tags", s.wrap(s.handleTags, false))
 
 	// agent data interface (agent-memory PLAN.md)
+	doc("GET /api/v1/agent/memory-policy", s.wrap(s.handleMemoryPolicy, true))
 	doc("GET /api/v1/agent/whoami", s.wrap(s.handleAgentWhoami, false))
 	doc("POST /api/v1/spaces/{space}/agent/context", s.wrap(s.handleAgentContext, false))
+	doc("POST /api/v1/spaces/{space}/agent/memory/recall", s.wrap(s.handleMemoryRecall, false))
+	doc("POST /api/v1/spaces/{space}/agent/memory/remember", s.wrap(s.handleMemoryRemember, false))
+	doc("POST /api/v1/spaces/{space}/agent/memory/revise", s.wrap(s.handleMemoryRevise, false))
+	doc("POST /api/v1/spaces/{space}/agent/memory/consolidate", s.wrap(s.handleMemoryConsolidate, false))
+	doc("GET /api/v1/spaces/{space}/agent/memory/operation", s.wrap(s.handleMemoryOperation, false))
+	doc("GET /api/v1/spaces/{space}/agent/memory/derived", s.wrap(s.handleMemoryDerived, false))
 	doc("GET /api/v1/spaces/{space}/changes/since", s.wrap(s.handleChangesSince, false))
 
 	doc("GET /api/v1/spaces/{space}/events", s.wrap(s.handleEvents, false))

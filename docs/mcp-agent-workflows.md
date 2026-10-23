@@ -2,6 +2,17 @@
 
 Status: reviewed design and implementation backlog, 2026-10-20. This document describes proposed workflow tools, not tools already shipped. The current operational contract remains [mcp.md](mcp.md) and [mcp-design.md](mcp-design.md). The file-explorer and collection-list changes accompanying this review do not implement this MCP redesign.
 
+## Implementation update: portable memory
+
+The generic project/task/map facade below remains a proposal. Focused
+search/document and indexed-memory tools have shipped since this design was
+written; use their actual names in [mcp.md](mcp.md), not the proposed aliases below.
+The evidence-backed memory implementation adds typed metadata, guarded revision
+and consolidation services, dependency status and the portable policy package.
+Project wiki and boards remain authoritative; memory links them rather than
+creating a parallel project database. Provider fallback, automatic regeneration,
+project manifests and unattended scheduling are not enabled by copying the skill.
+
 ## Finding
 
 Keep the current transport, authorization and REST/service layer. Add a small, typed workflow interface above it. Netsidian already has the data model needed for a useful knowledge and project tool: ordinary Markdown documents, scoped vaults, folders, links, maps and folder-backed task boards. Replacing these with a separate agent-memory database would split the truth.

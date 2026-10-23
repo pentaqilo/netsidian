@@ -54,3 +54,13 @@ Desktop settings control endpoints exist only in the internal native API and rej
 - [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization): the OAuth authorization model for a future OAuth-enabled profile; this release explicitly uses manual PAT authentication.
 - [Official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk): protocol implementation rather than handwritten protocol state.
 - [Codex MCP configuration](https://developers.openai.com/codex/mcp/): Streamable HTTP server URLs and bearer-token environment configuration.
+
+## Evidence-backed portable policy
+
+The versioned source is `skills/agent-memory/`; deterministic offline generation
+projects it into Go and TypeScript. The settings UI exports either a self-contained
+selected-adapter skill or a complete ZIP. Adoption is explicit for existing
+configurations. Provider and deployment location remain independent; no runtime
+LLM extraction or fallback storage is enabled. See
+[agent-memory-architecture.md](agent-memory-architecture.md) for the authority,
+evidence, compatibility and non-atomic recovery decision.

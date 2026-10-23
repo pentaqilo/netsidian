@@ -612,6 +612,7 @@ html[data-ws-codecolor] .markdown-preview :is(code,pre),html[data-ws-codecolor] 
 }
 
 .ribbon-logo{display:grid;place-items:center;flex:none;width:100%;height:40px;margin-top:6px;margin-bottom:6px}
+.about-app{display:flex;align-items:center;gap:14px;margin-bottom:14px}.about-app h3{margin:0 0 2px;font-size:15px}.about-app p{margin:0;font-size:12px}.about-list{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:13px}.about-list dt{color:var(--text-dim)}.about-list dd{margin:0}
 
 /* Shared syntax colors for Markdown reading, visual editing, and source editing. */
 :root{--syntax-keyword:#c4a7ff;--syntax-string:#9cd99a;--syntax-number:#f2bf83;--syntax-comment:#a0a7b4;--syntax-title:#8dc8ff;--syntax-attr:#ffb2a6;--syntax-meta:#e5ce8e}

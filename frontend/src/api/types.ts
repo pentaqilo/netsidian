@@ -121,7 +121,7 @@ export interface RuntimeCapabilities {
  storage:{defaultProvider:string;providers:string[];folderPicker:'native'|'server'|'none'};
 }
 export interface InstanceSettings {
- authMode:'none'|'local'|'external'|'mixed';needsSetup:boolean;signupEnabled:boolean;version:string;
+ authMode:'none'|'local'|'external'|'mixed';needsSetup:boolean;signupEnabled:boolean;version:string;releaseDate?:string;
  features:Record<string,boolean>;runtime:RuntimeCapabilities;
 }
 export interface VaultStorageConfig {

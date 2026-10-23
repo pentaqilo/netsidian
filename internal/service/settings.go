@@ -14,6 +14,7 @@ type Settings struct {
 	NeedsSetup    bool   `json:"needsSetup"`    // local mode with zero users
 	SignupEnabled bool   `json:"signupEnabled"` // open local registration
 	Version       string `json:"version"`
+	ReleaseDate   string `json:"releaseDate"` // release date of the running build (YYYY-MM-DD)
 	Features      struct {
 		Graph   bool `json:"graph"`
 		Memory  bool `json:"memory"`
@@ -23,7 +24,7 @@ type Settings struct {
 }
 
 func (s *Services) GetSettings(ctx context.Context) (*Settings, error) {
-	st := &Settings{AuthMode: s.Cfg.AuthMode, Version: Version, SignupEnabled: s.Cfg.SignupEnabled && (s.Cfg.AuthMode == "local" || s.Cfg.AuthMode == "mixed")}
+	st := &Settings{AuthMode: s.Cfg.AuthMode, Version: Version, ReleaseDate: ReleaseDate, SignupEnabled: s.Cfg.SignupEnabled && (s.Cfg.AuthMode == "local" || s.Cfg.AuthMode == "mixed")}
 	st.Features.Graph = true
 	st.Features.Memory = false
 	st.Features.Search = true
@@ -40,6 +41,9 @@ func (s *Services) GetSettings(ctx context.Context) (*Settings, error) {
 
 // Version is the build version reported to clients.
 const Version = "0.6.0"
+
+// ReleaseDate is the release date of the Version above; bump both together.
+const ReleaseDate = "2026-10-23"
 
 // ---------- preferences ----------
 

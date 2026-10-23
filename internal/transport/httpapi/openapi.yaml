@@ -1691,6 +1691,7 @@ components:
         needsSetup: {type: boolean}
         signupEnabled: {type: boolean}
         version: {type: string}
+        releaseDate: {type: string, description: 'Release date of the running build (YYYY-MM-DD)'}
         features: {type: object, additionalProperties: {type: boolean}}
         runtime:
           type: object

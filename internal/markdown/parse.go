@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -42,6 +43,7 @@ var (
 	italStarRe = regexp.MustCompile(`(^|[\s(])\*([^*_\s]+)\*`)
 	italUndRe  = regexp.MustCompile(`(^|[\s(])_([^*_\s]+)_`)
 	hlRe       = regexp.MustCompile(`==(.*?)==`)
+	codeSlotRe = regexp.MustCompile("`[0-9]+`")
 )
 
 // ParseFrontmatter splits YAML frontmatter from the body without
@@ -91,17 +93,24 @@ func Parse(src, fallbackTitle string) *ports.IndexData {
 	inComment := false
 	for i, raw := range lines {
 		line := strings.TrimRight(raw, "\r")
-		if f := fenceRe.FindString(line); f != "" {
-			t := strings.TrimSpace(line)
-			if !inFence {
-				inFence = true
-				fenceChar = strings.TrimSpace(f)
-			} else if strings.HasPrefix(t, fenceChar) && strings.TrimSpace(strings.TrimPrefix(t, fenceChar)) == "" {
-				inFence = false
+		indented := strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t")
+		if !inComment && !indented {
+			if f := fenceRe.FindString(line); f != "" {
+				t := strings.TrimSpace(line)
+				if !inFence {
+					inFence = true
+					fenceChar = strings.TrimSpace(f)
+				} else if strings.HasPrefix(t, fenceChar) && t == strings.TrimSpace(f) {
+					inFence = false
+				}
+				continue
 			}
+		}
+		if inFence || (indented && !inComment) {
 			continue
 		}
-		if inFence || strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t") {
+		line, spans := visibleInline(line, &inComment)
+		if indented {
 			continue
 		}
 		if h := headingRe.FindStringSubmatch(line); h != nil {
@@ -116,8 +125,7 @@ func Parse(src, fallbackTitle string) *ports.IndexData {
 				idx.TasksDone++
 			}
 		}
-		clean := blankInlineCode(line)
-		clean = blankComments(clean, &inComment)
+		clean, searchable := indexInline(line, spans)
 		for _, m := range wikilinkRe.FindAllStringSubmatch(clean, -1) {
 			target := strings.TrimSpace(m[2])
 			if target == "" {
@@ -176,7 +184,7 @@ func Parse(src, fallbackTitle string) *ports.IndexData {
 			}
 			seenTags[tag] = true
 		}
-		plain.WriteString(plainInline(clean))
+		plain.WriteString(searchable)
 		plain.WriteByte('\n')
 	}
 	for _, t := range frontmatterTags(fm) {
@@ -226,32 +234,34 @@ func firstHeadingTitle(hs []ports.Heading) string {
 // blankInlineCode blanks code-span content so its text cannot create
 // tags or links, while keeping character positions for readability.
 func blankInlineCode(s string) string {
-	var out strings.Builder
-	delimiter := ""
+	if !strings.Contains(s, "`") {
+		return s
+	}
+	out := []byte(s)
+	delimiter := 0
 	for i := 0; i < len(s); {
 		if s[i] == '`' {
 			end := i + 1
 			for end < len(s) && s[end] == '`' {
 				end++
 			}
-			run := s[i:end]
-			if delimiter == "" {
+			run := end - i
+			if delimiter == 0 {
 				delimiter = run
 			} else if delimiter == run {
-				delimiter = ""
+				delimiter = 0
 			}
-			out.WriteString(strings.Repeat(" ", end-i))
-			i = end
+			for ; i < end; i++ {
+				out[i] = ' '
+			}
 			continue
 		}
-		if delimiter != "" {
-			out.WriteByte(' ')
-		} else {
-			out.WriteByte(s[i])
+		if delimiter != 0 {
+			out[i] = ' '
 		}
 		i++
 	}
-	return out.String()
+	return string(out)
 }
 func blankComments(s string, in *bool) string {
 	var out strings.Builder
@@ -276,6 +286,98 @@ func blankComments(s string, in *bool) string {
 	}
 	return out.String()
 }
+
+type codeSpan struct{ start, end, ticks int }
+
+// visibleInline blanks comments at their original byte offsets. Comment markers
+// inside a matched code span and backticks inside a comment are both literal.
+func visibleInline(s string, comment *bool) (string, []codeSpan) {
+	if !*comment && !strings.ContainsAny(s, "`<") {
+		return s, nil
+	}
+	// Index equal-length closing runs once; an unmatched opener must not
+	// repeatedly scan the rest of the line or hide a subsequent comment.
+	var closer map[int]int
+	if strings.Contains(s, "`") {
+		closer = make(map[int]int)
+		next := make(map[int]int)
+		for end := strings.LastIndexByte(s, '`') + 1; end > 0; {
+			start := end - 1
+			for start > 0 && s[start-1] == '`' {
+				start--
+			}
+			closer[start] = next[end-start]
+			next[end-start] = start
+			end = strings.LastIndexByte(s[:start], '`') + 1
+		}
+	}
+	var masked []byte
+	var spans []codeSpan
+	for i := 0; i < len(s); {
+		switch {
+		case *comment || strings.HasPrefix(s[i:], "<!--"):
+			from := i
+			if !*comment {
+				from += len("<!--")
+			}
+			close := strings.Index(s[from:], "-->")
+			end := len(s)
+			*comment = close < 0
+			if close >= 0 {
+				end = from + close + len("-->")
+			}
+			if masked == nil {
+				masked = []byte(s)
+			}
+			for ; i < end; i++ {
+				masked[i] = ' '
+			}
+		case s[i] == '`':
+			end := i + 1
+			for end < len(s) && s[end] == '`' {
+				end++
+			}
+			ticks := 0 // Keep an unmatched run as literal punctuation.
+			if close := closer[i]; close != 0 {
+				ticks = end - i
+				end = close + ticks
+			}
+			spans = append(spans, codeSpan{i, end, ticks})
+			i = end
+		default:
+			i++
+		}
+	}
+	if masked != nil {
+		s = string(masked)
+	}
+	return s, spans
+}
+
+func indexInline(line string, spans []codeSpan) (clean, searchable string) {
+	if len(spans) == 0 {
+		return line, plainInline(line)
+	}
+	var prose strings.Builder
+	last := 0
+	for i, span := range spans {
+		prose.WriteString(line[last:span.start])
+		// Every visible backtick is in a span, so these slots cannot collide
+		// with prose. Outer markup may keep a slot (link label) or drop it (URL).
+		prose.WriteByte('`')
+		prose.WriteString(strconv.Itoa(i))
+		prose.WriteByte('`')
+		last = span.end
+	}
+	prose.WriteString(line[last:])
+	searchable = codeSlotRe.ReplaceAllStringFunc(plainInline(prose.String()), func(slot string) string {
+		i, _ := strconv.Atoi(slot[1 : len(slot)-1])
+		span := spans[i]
+		return line[span.start+span.ticks : span.end-span.ticks]
+	})
+	return blankInlineCode(line), searchable
+}
+
 func urlpkgPathUnescape(target string) (string, error) { return url.PathUnescape(target) }
 func normalizeTag(s string) string {
 	s = strings.ToLower(strings.Trim(strings.TrimLeft(strings.TrimSpace(s), "#"), "/"))
@@ -297,6 +399,9 @@ func normalizeTag(s string) string {
 
 // plainInline reduces inline markup to human-readable plain text.
 func plainInline(s string) string {
+	if !strings.ContainsAny(s, "[*_=") {
+		return s
+	}
 	s = aliasLinkRe.ReplaceAllString(s, "$3")
 	s = plainLinkRe.ReplaceAllString(s, "$1")
 	s = mdTextRe.ReplaceAllString(s, "$1")

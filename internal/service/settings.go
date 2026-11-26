@@ -40,10 +40,10 @@ func (s *Services) GetSettings(ctx context.Context) (*Settings, error) {
 }
 
 // Version is the build version reported to clients.
-const Version = "0.6.0"
+const Version = "0.6.1"
 
 // ReleaseDate is the release date of the Version above; bump both together.
-const ReleaseDate = "2026-10-23"
+const ReleaseDate = "2026-11-26"
 
 // ---------- preferences ----------
 

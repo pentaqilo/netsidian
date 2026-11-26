@@ -66,6 +66,39 @@ func TestPlainInlineNoBackreferencePanic(t *testing.T) {
 	}
 }
 
+func TestInlineCodeIsLiteralSearchText(t *testing.T) {
+	src := "**Call `__init__`** with [``_id_ ` [[fake]] #fake [x](fake.md)``](real.md) and [[Page|`_alias_`]] #real."
+	idx := Parse(src, "test")
+	if want := "Call __init__ with _id_ ` [[fake]] #fake [x](fake.md) and _alias_ #real."; idx.BodyPlain != want {
+		t.Errorf("body = %q, want %q", idx.BodyPlain, want)
+	}
+	if got := strings.Join(idx.Tags, ","); got != "real" {
+		t.Errorf("tags = %q", got)
+	}
+	if len(idx.Wikilinks) != 2 || idx.Wikilinks[0].Target != "Page" || idx.Wikilinks[1].Target != "real.md" {
+		t.Errorf("links = %+v", idx.Wikilinks)
+	}
+}
+
+func TestSearchSkipsHiddenBlocksAndResumesAfterComments(t *testing.T) {
+	src := "`<!--literal-->` <!-- `hidden`\n# hidden title\n```hidden fence\n` --> `__visible__` #real\n" +
+		"<!--hidden\n    ` -->\n    `hidden indent`\n\t`hidden tab`\n~~~lang\n<!-- `hidden code`\n~~~~\n[[Visible]]"
+	idx := Parse(src, "fallback")
+	if got := strings.Join(strings.Fields(idx.BodyPlain), " "); got != "<!--literal--> __visible__ #real Visible" {
+		t.Errorf("unexpected search text: %q", got)
+	}
+	if idx.Title != "fallback" || len(idx.Headings) != 0 || strings.Join(idx.Tags, ",") != "real" || len(idx.Wikilinks) != 1 || idx.Wikilinks[0].Target != "Visible" {
+		t.Errorf("unexpected structure: %+v", idx)
+	}
+}
+
+func TestUnmatchedBackticksDoNotExposeComments(t *testing.T) {
+	idx := Parse("a ` followed by <!-- private\nstill private --> `0`", "test")
+	if got := strings.Join(strings.Fields(idx.BodyPlain), " "); got != "a ` followed by 0" {
+		t.Errorf("unexpected search text: %q", got)
+	}
+}
+
 func TestConsistentTagsAndCodeExclusion(t *testing.T) {
 	idx := Parse("---\ntag: '#Work, project/one'\ntags: [WORK, Żółć, 123]\n---\n#work #-keep- #project/two #123\n`` #fake ` #fake ``\n    #indented\n<!-- #comment\n#hidden -->", "Test")
 	got := strings.Join(idx.Tags, ",")

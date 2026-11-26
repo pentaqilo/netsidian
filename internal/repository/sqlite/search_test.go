@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/pentaqilo/netsidian/internal/domain"
+	"github.com/pentaqilo/netsidian/internal/markdown"
 	"github.com/pentaqilo/netsidian/internal/ports"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,5 +67,60 @@ func TestSearchLargeVaultBoundedFilters(t *testing.T) {
 	hits, err = db.Search(ctx, &ports.SearchQuery{SpaceID: "vault", Tags: []string{"research"}, Limit: 8})
 	if err != nil || len(hits) != 8 {
 		t.Fatalf("tag subtree %d %v", len(hits), err)
+	}
+}
+
+func TestInlineCodeSearchMigratesExistingIndex(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(filepath.Join(t.TempDir(), "index.db"), 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.SQL.Close()
+	now := time.Now()
+	space := &domain.Space{ID: "v", Slug: "latarnia", Name: "Latarnia", Kind: "shared", StorageBinding: "local-main", CreatedAt: now}
+	if err := db.CreateSpace(ctx, space); err != nil {
+		t.Fatal(err)
+	}
+	doc := &domain.Document{ID: "doc", SpaceID: space.ID, Path: "Linki.md", NormKey: "linki.md", Kind: "note", CurrentRevision: "rev", CreatedAt: now, UpdatedAt: now}
+	if err := db.InsertDocument(ctx, doc, &domain.Revision{ID: doc.CurrentRevision, DocumentID: doc.ID, CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	const body = "Edytuj `config/links.json`. Każdy link ma pola `name` i `url`."
+	old := &ports.IndexData{Title: "Linki", BodyPlain: "Edytuj                    . Każdy link ma pola        i      ."}
+	if err := db.ReplaceDocumentIndex(ctx, space.ID, doc, doc.CurrentRevision, old); err != nil {
+		t.Fatal(err)
+	}
+	// Replay the v10-to-v11 upgrade on the pre-change derived data.
+	if _, err := db.SQL.Exec(`UPDATE meta SET value='10' WHERE key='schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.migrate(); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := db.DocumentsNeedingIndex(ctx, space.ID)
+	if err != nil || len(stale) != 1 || stale[0].ID != doc.ID || stale[0].CurrentRevision != "rev" {
+		t.Fatalf("expected original revision pending repair: %+v %v", stale, err)
+	}
+	if err := db.ReplaceDocumentIndexDeferred(ctx, space.ID, stale[0], "rev", markdown.Parse(body, "Linki")); err != nil {
+		t.Fatal(err)
+	}
+	for _, term := range []string{"config/links.json", "name", "url"} {
+		hits, err := db.Search(ctx, &ports.SearchQuery{SpaceID: space.ID, Text: term})
+		if err != nil || len(hits) != 1 || hits[0].DocumentID != doc.ID {
+			t.Fatalf("%q: hits=%v err=%v", term, hits, err)
+		}
+		if !strings.Contains(strings.NewReplacer("<mark>", "", "</mark>", "").Replace(hits[0].Snippet), term) {
+			t.Errorf("%q not in snippet: %s", term, hits[0].Snippet)
+		}
+	}
+	if err := db.migrate(); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := db.DocumentsNeedingIndex(ctx, space.ID); err != nil || len(pending) != 0 {
+		t.Fatalf("unexpected repeat repair: %v %v", pending, err)
+	}
+	if n := countSQL(t, db, `SELECT count(*) FROM revisions WHERE document_id='doc'`); n != 1 {
+		t.Errorf("repair changed history: %d revisions", n)
 	}
 }

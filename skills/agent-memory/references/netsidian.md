@@ -1,31 +1,30 @@
 # Netsidian adapter
 
-Inspect actual tool schemas before first use.
+Inspect tool schemas. Use netsidian_connect for vault IDs, grants and policy version.
+Use configured vaultId/folder/scopeId. Keep credentials separate. Respect 401/403
+and Retry-After; no fallback.
 
-Use netsidian_connect for actual vault IDs, per-vault grants and policy version.
-Use configured vaultId/folder/scopeId. Supply credentials
-separately, never in notes or URLs. Respect 401/403 and Retry-After; no fallback.
-
-Use netsidian_memory_recall for compact entries: prefer known key, active status,
-scopeId and an 8192-byte budget. Matching is substring, not semantic ranking.
+Recall by key, active status and scopeId within 8192 bytes. Matching is by substring.
 Continue cursors unchanged; restart on conflict. History needs its grant.
 IDs survive rename; folder links do not.
 
-Use netsidian_memory_remember with compact text (500 Unicode characters), optional
-exact detail (20000), current index revision for edits, and logical idempotency key.
- refs navigate to latest resources; sourceRefs pin
-revision evidence, e.g. {"target":"doc_ID","kind":"document","revision":"rev_ID"}.
-Use discovered real IDs. Index already-correct wiki decisions rather than rewriting
-them. Preserve exact wording in detail/quote. Longer evidence uses an ordinary
-verified document plus an index pointer; never truncate silently.
+Use netsidian_memory_remember with text (500 Unicode characters), exact detail
+(20000), current index revision for edits and an idempotency key. refs navigate;
+sourceRefs pin evidence by real ID and revision. Preserve wording in detail/quote;
+link longer evidence in a verified document rather than truncating it.
 
-Verified remember detailRevision confirms exact read-back.
-Generic writes require verification; receipts confirm persistence, not truth. For corrections use
-netsidian_memory_revise; for consolidation inspect netsidian_memory_consolidate
-and dry-run first. Partial/unknown outcomes require original operation identity
-and unchanged payload; never repeat with a fresh key to bypass recovery.
+Verified detailRevision confirms exact read-back. Verify generic writes; receipts
+confirm persistence, not truth. Correct with netsidian_memory_revise. Dry-run
+netsidian_memory_consolidate first. Recover partial/unknown outcomes using the
+original operation identity and unchanged payload.
 
 Ordinary project knowledge uses netsidian_search and document_read/create/update.
+For human readers, find and read the topic note before creating one. Lead with
+the answer under descriptive headings. Merge repeats with their sources; separate
+conditions, history and uncertainty. Preserve technical names, quotes and human
+edits. Link topics from an overview when useful. Skip unchanged notes. Agent
+memory should link the authoritative note, not copy mutable facts. If two copies
+are explicitly required, verify both and report partial completion if interrupted.
 Link authoritative wiki/boards. Graph requires its grant. Focused create uses markdown; REST create uses content; REST content update
 uses markdown and If-Match. Use document IDs or explicit by-path lookup.
 
